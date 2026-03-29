@@ -93,6 +93,21 @@ def main() -> None:
     fail_on_regression = get_input("FAIL-ON-REGRESSION", default="true").lower() == "true"
     comment_on_pr = get_input("COMMENT-ON-PR", default="true").lower() == "true"
     github_token = get_input("GITHUB-TOKEN", default=os.environ.get("GITHUB_TOKEN", ""))
+    alpha = float(get_input("ALPHA", default="0.05"))
+    n_bootstrap = int(get_input("N-BOOTSTRAP", default="10000"))
+    confidence = float(get_input("CONFIDENCE", default="0.95"))
+    higher_is_better_raw = get_input("HIGHER-IS-BETTER", default="")
+
+    # --- Parse higher-is-better overrides ---
+    higher_is_better: dict[str, bool] | None = None
+    if higher_is_better_raw:
+        try:
+            higher_is_better = json.loads(higher_is_better_raw)
+            if not isinstance(higher_is_better, dict):
+                raise ValueError("must be a JSON object")
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"::error::Invalid 'higher-is-better' input: {e}")
+            sys.exit(1)
 
     # --- Import modules (after input validation to fail fast) ---
     from src.reporters.model_card import generate_model_card
@@ -181,6 +196,10 @@ def main() -> None:
                 baseline=baseline,
                 regression_method=regression_test,
                 tolerance=regression_tolerance,
+                higher_is_better=higher_is_better,
+                alpha=alpha,
+                n_bootstrap=n_bootstrap,
+                confidence=confidence,
             )
         except ValueError as e:
             print(f"::error::{e}")

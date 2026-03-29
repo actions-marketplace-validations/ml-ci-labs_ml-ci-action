@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import requests
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from src.validators.model_validator import ModelValidationResult
 
 COMMENT_MARKER = "<!-- ml-ci-report -->"
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 PROJECT_URL = "https://github.com/ml-ci-labs/ml-ci-action"
 
 
@@ -59,12 +59,14 @@ def generate_report(
 
         # Regression test result
         rr = model_result.regression_result
-        sections.append(f"**Regression test**: `{rr.method}` (tolerance: {rr.details.get('tolerance', 0):.1%})")
-        if rr.regression_detected:
-            sections.append(f"**Result**: :x: {rr.details.get('regressed_count', 0)} metric(s) regressed")
-        else:
-            sections.append("**Result**: :white_check_mark: All metrics within tolerance")
+        sections.append(_build_regression_summary(rr))
         sections.append("")
+
+        # Statistical details (collapsible for wilcoxon/bootstrap)
+        stat_details = _build_statistical_details(rr)
+        if stat_details:
+            sections.append(stat_details)
+            sections.append("")
 
         # New/removed metrics
         if model_result.current_only_metrics:
@@ -135,6 +137,77 @@ def _build_metrics_table(comparisons: list[MetricComparison]) -> str:
         lines.append(
             f"| {comp.name} | {baseline_str} | {current_str} | {delta_str} | {pct_str} | {status} |"
         )
+
+    return "\n".join(lines)
+
+
+def _build_regression_summary(rr: Any) -> str:
+    """Build a one-line regression test summary."""
+    method = rr.method
+    if method == "threshold":
+        label = f"**Regression test**: `threshold` (tolerance: {rr.details.get('tolerance', 0):.1%})"
+    elif method == "wilcoxon":
+        alpha = rr.details.get("alpha", 0.05)
+        n = next(
+            (v.get("n_observations", "?") for v in rr.details.get("metric_results", {}).values()),
+            "?",
+        )
+        label = f"**Regression test**: `wilcoxon` (alpha: {alpha}, n={n} folds)"
+    elif method == "bootstrap":
+        conf = rr.details.get("confidence", 0.95)
+        n_boot = rr.details.get("n_bootstrap", 10000)
+        label = f"**Regression test**: `bootstrap` ({conf:.0%} CI, {n_boot} resamples)"
+    else:
+        label = f"**Regression test**: `{method}`"
+
+    if rr.regression_detected:
+        result = f"**Result**: :x: {rr.details.get('regressed_count', 0)} metric(s) regressed"
+    else:
+        if method == "threshold":
+            result = "**Result**: :white_check_mark: All metrics within tolerance"
+        else:
+            result = "**Result**: :white_check_mark: No statistically significant regression"
+
+    return f"{label}\n{result}"
+
+
+def _build_statistical_details(rr: Any) -> str | None:
+    """Build a collapsible details block for statistical test results."""
+    method = rr.method
+    metric_results = rr.details.get("metric_results")
+    if not metric_results or method == "threshold":
+        return None
+
+    lines: list[str] = []
+
+    if method == "wilcoxon":
+        alpha = rr.details.get("alpha", 0.05)
+        lines.append(f"<details>\n<summary>Wilcoxon signed-rank test details (alpha = {alpha})</summary>\n")
+        lines.append("| Metric | p-value | Median Diff | Significant | Regressed |")
+        lines.append("|--------|---------|-------------|-------------|-----------|")
+        for name, res in sorted(metric_results.items()):
+            p = f"{res['p_value']:.4f}" if res["p_value"] < 1.0 else "1.0000"
+            md = f"{res['median_diff']:+.4f}"
+            sig = "Yes" if res["significant"] else "No"
+            reg = ":x: Yes" if res["regressed"] else "No"
+            lines.append(f"| {name} | {p} | {md} | {sig} | {reg} |")
+        lines.append("\n</details>")
+
+    elif method == "bootstrap":
+        conf = rr.details.get("confidence", 0.95)
+        n_boot = rr.details.get("n_bootstrap", 10000)
+        lines.append(
+            f"<details>\n<summary>Bootstrap CI details ({conf:.0%} confidence, {n_boot} resamples)</summary>\n"
+        )
+        lines.append("| Metric | Mean Diff | CI Lower | CI Upper | Regressed |")
+        lines.append("|--------|-----------|----------|----------|-----------|")
+        for name, res in sorted(metric_results.items()):
+            md = f"{res['mean_diff']:+.4f}"
+            lo = f"{res['ci_lower']:+.4f}"
+            hi = f"{res['ci_upper']:+.4f}"
+            reg = ":x: Yes" if res["regressed"] else "No"
+            lines.append(f"| {name} | {md} | {lo} | {hi} | {reg} |")
+        lines.append("\n</details>")
 
     return "\n".join(lines)
 

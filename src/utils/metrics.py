@@ -76,6 +76,7 @@ class MetricsData:
     metrics: dict[str, float] = field(default_factory=dict)
     dataset: dict[str, Any] = field(default_factory=dict)
     hyperparameters: dict[str, Any] = field(default_factory=dict)
+    observations: dict[str, list[float]] = field(default_factory=dict)
 
 
 @dataclass
@@ -116,6 +117,8 @@ def load_metrics(path: str) -> MetricsData:
         if not isinstance(value, (int, float)):
             raise ValueError(f"Metric '{key}' must be numeric, got {type(value).__name__}: {value}")
 
+    observations = _parse_observations(data)
+
     return MetricsData(
         model_name=data.get("model_name", "unnamed-model"),
         framework=data.get("framework", "unknown"),
@@ -123,6 +126,7 @@ def load_metrics(path: str) -> MetricsData:
         metrics=metrics,
         dataset=data.get("dataset", {}),
         hyperparameters=data.get("hyperparameters", {}),
+        observations=observations,
     )
 
 
@@ -190,6 +194,8 @@ def load_metrics_from_github(
         if not isinstance(value, (int, float)):
             raise ValueError(f"Baseline metric '{key}' must be numeric, got {type(value).__name__}")
 
+    observations = _parse_observations(data)
+
     return MetricsData(
         model_name=data.get("model_name", "unnamed-model"),
         framework=data.get("framework", "unknown"),
@@ -197,7 +203,81 @@ def load_metrics_from_github(
         metrics=metrics,
         dataset=data.get("dataset", {}),
         hyperparameters=data.get("hyperparameters", {}),
+        observations=observations,
     )
+
+
+def _parse_observations(data: dict) -> dict[str, list[float]]:
+    """Parse optional observations from a metrics data dict."""
+    obs = data.get("observations")
+    if obs is None:
+        return {}
+    if not isinstance(obs, dict):
+        raise ValueError("'observations' must be a dictionary of metric_name -> list of numeric values")
+    for key, values in obs.items():
+        if not isinstance(values, list):
+            raise ValueError(f"Observations for '{key}' must be a list, got {type(values).__name__}")
+        for i, v in enumerate(values):
+            if not isinstance(v, (int, float)):
+                raise ValueError(
+                    f"Observation {i} for '{key}' must be numeric, got {type(v).__name__}: {v}"
+                )
+    return obs
+
+
+def validate_paired_observations(
+    current: MetricsData,
+    baseline: MetricsData,
+    metric_names: list[str],
+) -> dict[str, tuple[list[float], list[float]]]:
+    """Extract and validate paired observation vectors for statistical tests.
+
+    Both current and baseline must have observations for each requested metric,
+    and the vectors must have equal length (paired samples).
+
+    Raises:
+        ValueError: If observations are missing, incomplete, or mismatched.
+    """
+    if not current.observations:
+        raise ValueError(
+            "Current metrics file has no 'observations' key. "
+            "Statistical tests (wilcoxon, bootstrap) require per-fold observation vectors. "
+            "Add an 'observations' key with lists of values from cross-validation folds."
+        )
+    if not baseline.observations:
+        raise ValueError(
+            "Baseline metrics file has no 'observations' key. "
+            "Statistical tests (wilcoxon, bootstrap) require per-fold observation vectors. "
+            "Add an 'observations' key with lists of values from cross-validation folds."
+        )
+
+    pairs: dict[str, tuple[list[float], list[float]]] = {}
+    for name in metric_names:
+        if name not in current.observations:
+            raise ValueError(
+                f"Current metrics file has no observations for '{name}'. "
+                f"Available observations: {sorted(current.observations.keys())}"
+            )
+        if name not in baseline.observations:
+            raise ValueError(
+                f"Baseline metrics file has no observations for '{name}'. "
+                f"Available observations: {sorted(baseline.observations.keys())}"
+            )
+        cur = current.observations[name]
+        base = baseline.observations[name]
+        if len(cur) != len(base):
+            raise ValueError(
+                f"Observation count mismatch for '{name}': "
+                f"current has {len(cur)}, baseline has {len(base)}. "
+                "Paired statistical tests require equal-length observation vectors."
+            )
+        if len(cur) < 2:
+            raise ValueError(
+                f"At least 2 observations required for '{name}', got {len(cur)}. "
+                "Use more cross-validation folds or evaluation runs."
+            )
+        pairs[name] = (cur, base)
+    return pairs
 
 
 def _is_higher_better(metric_name: str) -> bool:

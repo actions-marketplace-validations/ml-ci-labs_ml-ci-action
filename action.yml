@@ -27,7 +27,7 @@ inputs:
     required: false
     default: '0.1'
   regression-test:
-    description: 'Regression detection method: threshold (supported in v0.1.1); wilcoxon and bootstrap are not yet implemented'
+    description: 'Regression detection method: threshold, wilcoxon, or bootstrap'
     required: false
     default: 'threshold'
   regression-tolerance:
@@ -46,6 +46,22 @@ inputs:
     description: 'Post validation results as a PR comment (true/false)'
     required: false
     default: 'true'
+  alpha:
+    description: 'Significance level for Wilcoxon test (0.0-1.0)'
+    required: false
+    default: '0.05'
+  n-bootstrap:
+    description: 'Number of bootstrap resamples for bootstrap CI method'
+    required: false
+    default: '10000'
+  confidence:
+    description: 'Confidence level for bootstrap CI (0.0-1.0)'
+    required: false
+    default: '0.95'
+  higher-is-better:
+    description: 'JSON object mapping metric names to direction (true=higher is better). Overrides automatic inference.'
+    required: false
+    default: ''
   framework:
     description: 'ML framework hint: auto, pytorch, sklearn, tensorflow, huggingface'
     required: false
