@@ -505,12 +505,12 @@ def test_report_mode_artifact_writes_stable_report_files(
 
     outputs = _parse_outputs(output_path)
     mocked_comment.assert_not_called()
-    assert outputs["report-markdown-path"].endswith(".ml-ci/validation-report.md")
-    assert outputs["report-json-path"].endswith(".ml-ci/validation-report.json")
-    assert Path(outputs["report-markdown-path"]).exists()
-    assert Path(outputs["report-json-path"]).exists()
+    assert outputs["report-markdown-path"] == ".ml-ci/validation-report.md"
+    assert outputs["report-json-path"] == ".ml-ci/validation-report.json"
+    assert (tmp_path / outputs["report-markdown-path"]).exists()
+    assert (tmp_path / outputs["report-json-path"]).exists()
 
-    artifact_payload = json.loads(Path(outputs["report-json-path"]).read_text())
+    artifact_payload = json.loads((tmp_path / outputs["report-json-path"]).read_text())
     assert artifact_payload["baseline_source"]["mode"] == "none"
     assert artifact_payload["shared_metrics"] == []
     assert sorted(artifact_payload["current_only_metrics"]) == ["accuracy", "loss"]
@@ -543,8 +543,10 @@ def test_report_mode_both_keeps_comment_behavior_and_artifacts(
 
     outputs = _parse_outputs(output_path)
     mocked_comment.assert_called_once()
-    assert Path(outputs["report-markdown-path"]).exists()
-    assert Path(outputs["report-json-path"]).exists()
+    assert outputs["report-markdown-path"] == ".ml-ci/validation-report.md"
+    assert outputs["report-json-path"] == ".ml-ci/validation-report.json"
+    assert (tmp_path / outputs["report-markdown-path"]).exists()
+    assert (tmp_path / outputs["report-json-path"]).exists()
 
 
 def test_legacy_comment_toggle_still_works_when_report_mode_is_unset(

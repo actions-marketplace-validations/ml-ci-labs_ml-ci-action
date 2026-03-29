@@ -221,8 +221,8 @@ Precedence rules:
 | `regression-detected` | `true` when any shared metric regressed, including `warn`-severity metrics. |
 | `app-connected` | `true` when the provided ML-CI App token can reach the current repository. |
 | `model-card-path` | Output path for the generated model card, if enabled. |
-| `report-markdown-path` | Output path for `.ml-ci/validation-report.md` when `report-mode` includes `artifact`. |
-| `report-json-path` | Output path for `.ml-ci/validation-report.json` when `report-mode` includes `artifact`. |
+| `report-markdown-path` | Workspace-relative output path for `.ml-ci/validation-report.md` when `report-mode` includes `artifact`. |
+| `report-json-path` | Workspace-relative output path for `.ml-ci/validation-report.json` when `report-mode` includes `artifact`. |
 | `report-json` | Full JSON payload describing the validation result. |
 
 ## Optional App Upload

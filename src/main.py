@@ -103,8 +103,10 @@ def write_report_artifacts(workspace: str, markdown_report: str, report_data: di
     artifact_dir = os.path.join(workspace, ".ml-ci")
     os.makedirs(artifact_dir, exist_ok=True)
 
-    markdown_path = os.path.join(artifact_dir, "validation-report.md")
-    json_path = os.path.join(artifact_dir, "validation-report.json")
+    markdown_relpath = os.path.join(".ml-ci", "validation-report.md")
+    json_relpath = os.path.join(".ml-ci", "validation-report.json")
+    markdown_path = os.path.join(workspace, markdown_relpath)
+    json_path = os.path.join(workspace, json_relpath)
 
     with open(markdown_path, "w", encoding="utf-8") as handle:
         handle.write(markdown_report)
@@ -113,7 +115,7 @@ def write_report_artifacts(workspace: str, markdown_report: str, report_data: di
         json.dump(report_data, handle, indent=2)
         handle.write("\n")
 
-    return markdown_path, json_path
+    return markdown_relpath, json_relpath
 
 
 def main() -> None:
