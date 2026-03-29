@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-LABEL org.opencontainers.image.source="https://github.com/ml-ci/ml-ci-action"
+LABEL org.opencontainers.image.source="https://github.com/ml-ci-labs/ml-ci-action"
 LABEL org.opencontainers.image.description="ML CI/CD GitHub Action — model validation, data quality, model cards"
 LABEL org.opencontainers.image.licenses="AGPL-3.0"
 
