@@ -660,3 +660,217 @@ def test_mixing_local_baseline_metrics_with_explicit_remote_inputs_fails(
     assert exc_info.value.code == 1
     outputs = _parse_outputs(output_path)
     assert outputs["validation-passed"] == "false"
+
+
+def test_repo_data_policy_applies_missing_thresholds_and_column_filters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+    data_path = tmp_path / "data.csv"
+    data_path.write_text(
+        "feature_a,feature_b,feature_c,label\n"
+        "1,,10,1\n"
+        "2,,11,0\n"
+        "3,,12,1\n"
+        "4,,13,0\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".ml-ci.yml").write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "policy:",
+                "  data:",
+                "    missing_threshold: 0.05",
+                "    missing_thresholds:",
+                "      feature_b: 1.0",
+                "    include_columns:",
+                "      - feature_b",
+                "      - label",
+                "    label_column: label",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_DATA_PATH", "data.csv")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "true"
+    report = json.loads(outputs["report-json"])
+    assert report["data_policy"]["label_column"] == "label"
+    assert report["data_policy"]["include_columns"] == ["feature_b", "label"]
+    assert report["data_validation"]["filtered_columns"] == ["feature_b", "label"]
+    assert report["data_validation"]["missing_value_failures"] == {}
+
+
+def test_first_run_data_guidance_is_exported_in_report_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+    data_path = tmp_path / "data.csv"
+    data_path.write_text(
+        "feature_a,feature_b,label\n"
+        "1,1,1\n"
+        "2,2,0\n"
+        "3,3,1\n",
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_DATA_PATH", "data.csv")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    report = json.loads(outputs["report-json"])
+    guidance = report["data_validation"]["details"]["guidance"]
+    assert any("No `baseline-data-path` provided" in note for note in guidance)
+    assert any("Detected candidate label column" in note for note in guidance)
+
+
+def test_schema_messaging_in_report_json_is_actionable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+    data_path = tmp_path / "current.csv"
+    data_path.write_text("feature_a,label\n1,1\n2,0\n", encoding="utf-8")
+    baseline_path = tmp_path / "baseline.csv"
+    baseline_path.write_text(
+        "feature_a,feature_b,label\n1,10,1\n2,11,0\n",
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_DATA_PATH", "current.csv")
+    monkeypatch.setenv("INPUT_BASELINE_DATA_PATH", "baseline.csv")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    with pytest.raises(SystemExit) as exc_info:
+        main_module.main()
+
+    assert exc_info.value.code == 1
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "false"
+    report = json.loads(outputs["report-json"])
+    assert any(
+        "exclude them with `policy.data.exclude_columns`" in message
+        for message in report["data_validation"]["schema_errors"]
+    )
+
+
+def test_app_connected_defaults_false_without_upload_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    assert outputs["app-connected"] == "false"
+    report = json.loads(outputs["report-json"])
+    assert report["app_connected"] is False
+    assert report["upload"]["attempted"] is False
+
+
+def test_upload_success_sets_app_connected_and_records_upload_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+    monkeypatch.setenv("INPUT_UPLOAD_URL", "https://example.test/api/v1/runs")
+    monkeypatch.setenv("INPUT_UPLOAD_TOKEN", "token123")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "ml-ci-labs/ml-ci-action")
+
+    import src.utils.app_client as app_client_module
+
+    monkeypatch.setattr(
+        app_client_module,
+        "detect_app_connection",
+        lambda **_kwargs: app_client_module.AppConnectionStatus(connected=True),
+    )
+    monkeypatch.setattr(
+        app_client_module,
+        "upload_run_payload",
+        lambda **_kwargs: app_client_module.UploadResult(
+            attempted=True,
+            connected=True,
+            succeeded=True,
+            status_code=202,
+        ),
+    )
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    assert outputs["app-connected"] == "true"
+    report = json.loads(outputs["report-json"])
+    assert report["app_connected"] is True
+    assert report["upload"]["succeeded"] is True
+    assert report["upload"]["status_code"] == 202
+
+
+def test_unreachable_app_degrades_gracefully_without_failing_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+    monkeypatch.setenv("INPUT_UPLOAD_URL", "https://example.test/api/v1/runs")
+    monkeypatch.setenv("INPUT_UPLOAD_TOKEN", "token123")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "ml-ci-labs/ml-ci-action")
+
+    import src.utils.app_client as app_client_module
+
+    monkeypatch.setattr(
+        app_client_module,
+        "detect_app_connection",
+        lambda **_kwargs: app_client_module.AppConnectionStatus(
+            connected=False,
+            reason="repo_not_accessible",
+        ),
+    )
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "true"
+    assert outputs["app-connected"] == "false"
+    report = json.loads(outputs["report-json"])
+    assert report["upload"]["attempted"] is False
+    assert report["upload"]["failure_reason"] == "repo_not_accessible"

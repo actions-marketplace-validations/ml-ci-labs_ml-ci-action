@@ -90,6 +90,7 @@ class MetricsData:
     metrics: dict[str, float] = field(default_factory=dict)
     dataset: dict[str, Any] = field(default_factory=dict)
     hyperparameters: dict[str, Any] = field(default_factory=dict)
+    lineage: dict[str, Any] = field(default_factory=dict)
     observations: dict[str, list[float]] = field(default_factory=dict)
 
 
@@ -182,6 +183,7 @@ def load_metrics(path: str) -> MetricsData:
             raise ValueError(f"Metric '{key}' must be numeric, got {type(value).__name__}: {value}")
 
     observations = _parse_observations(data)
+    lineage = _parse_lineage(data)
 
     return MetricsData(
         model_name=data.get("model_name", "unnamed-model"),
@@ -190,6 +192,7 @@ def load_metrics(path: str) -> MetricsData:
         metrics=metrics,
         dataset=data.get("dataset", {}),
         hyperparameters=data.get("hyperparameters", {}),
+        lineage=lineage,
         observations=observations,
     )
 
@@ -259,6 +262,7 @@ def load_metrics_from_github(
             raise ValueError(f"Baseline metric '{key}' must be numeric, got {type(value).__name__}")
 
     observations = _parse_observations(data)
+    lineage = _parse_lineage(data)
 
     return MetricsData(
         model_name=data.get("model_name", "unnamed-model"),
@@ -267,6 +271,7 @@ def load_metrics_from_github(
         metrics=metrics,
         dataset=data.get("dataset", {}),
         hyperparameters=data.get("hyperparameters", {}),
+        lineage=lineage,
         observations=observations,
     )
 
@@ -287,6 +292,29 @@ def _parse_observations(data: dict) -> dict[str, list[float]]:
                     f"Observation {i} for '{key}' must be numeric, got {type(v).__name__}: {v}"
                 )
     return obs
+
+
+def _parse_lineage(data: dict[str, Any]) -> dict[str, Any]:
+    """Parse optional lineage metadata from a metrics data dict."""
+    lineage = data.get("lineage")
+    if lineage is None:
+        return {}
+    if not isinstance(lineage, dict):
+        raise ValueError("'lineage' must be an object")
+
+    training_data_hash = lineage.get("training_data_hash")
+    if training_data_hash is not None and not isinstance(training_data_hash, str):
+        raise ValueError("'lineage.training_data_hash' must be a string")
+
+    model_artifact_hash = lineage.get("model_artifact_hash")
+    if model_artifact_hash is not None and not isinstance(model_artifact_hash, str):
+        raise ValueError("'lineage.model_artifact_hash' must be a string")
+
+    environment = lineage.get("environment")
+    if environment is not None and not isinstance(environment, dict):
+        raise ValueError("'lineage.environment' must be an object")
+
+    return lineage
 
 
 def validate_paired_observations(

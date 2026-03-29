@@ -35,7 +35,7 @@
 
 1. Merge the tested branch to `main`.
 2. Confirm `main` is green in GitHub Actions.
-3. Tag the merge commit as the current patch release on the `v0.3.x` line.
-4. Confirm `.github/workflows/release.yml` pushed `v0.3.x`, `v0.3`, and `v0` image tags to GHCR.
+3. Tag the merge commit as the current patch release on the `v0.4.x` line.
+4. Confirm `.github/workflows/release.yml` pushed `v0.4.x`, `v0.4`, and `v0` image tags to GHCR.
 5. Confirm the matching GitHub Release page exists for the exact patch tag and its notes describe the published image tags.
 6. Publish or update the action on GitHub Marketplace.

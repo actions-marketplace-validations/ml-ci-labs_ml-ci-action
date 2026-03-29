@@ -9,13 +9,13 @@ from typing import TYPE_CHECKING, Any
 import requests
 
 from src.utils.metrics import MetricComparison
+from src.version import VERSION
 
 if TYPE_CHECKING:
     from src.validators.data_validator import DataValidationResult
     from src.validators.model_validator import ModelValidationResult
 
 COMMENT_MARKER = "<!-- ml-ci-report -->"
-VERSION = "0.3.0"
 PROJECT_URL = "https://github.com/ml-ci-labs/ml-ci-action"
 
 
@@ -41,11 +41,15 @@ def generate_report(
     sections: list[str] = [COMMENT_MARKER, ""]
 
     # Header
+    data_failures = data_result.failure_count if data_result else 0
+    data_warnings = data_result.warning_count if data_result else 0
     if model_result and model_result.blocking_regression_count > 0:
+        sections.append("## :x: ML-CI Validation Report")
+    elif data_failures > 0:
         sections.append("## :x: ML-CI Validation Report")
     elif model_result and model_result.warning_regression_count > 0:
         sections.append("## :warning: ML-CI Validation Report")
-    elif data_result and not data_result.overall_passed:
+    elif data_warnings > 0:
         sections.append("## :warning: ML-CI Validation Report")
     else:
         sections.append("## :white_check_mark: ML-CI Validation Report")
@@ -126,6 +130,8 @@ def generate_report(
     if data_result:
         status = ":white_check_mark: Passed" if data_result.overall_passed else ":x: Failed"
         sections.append(f"- Data quality: {status}")
+        if data_result.warning_count > 0:
+            sections.append(f"- Data quality warnings: {data_result.warning_count}")
     sections.append("")
 
     # Footer
@@ -266,45 +272,72 @@ def _build_data_quality_section(data_result: DataValidationResult) -> str:
     """Build a data quality summary section."""
     lines: list[str] = []
 
-    # Schema
-    if data_result.schema_valid:
-        lines.append("- :white_check_mark: Schema validation passed")
-    else:
-        lines.append("- :x: Schema validation failed")
-        for err in data_result.schema_errors[:5]:  # limit to 5 errors
-            lines.append(f"  - {err}")
-
-    # Missing values
-    high_missing = {
-        col: pct for col, pct in data_result.missing_value_report.items() if pct > 0.05
-    }
-    if high_missing:
-        lines.append(f"- :warning: {len(high_missing)} column(s) with >5% missing values")
-        for col, pct in sorted(high_missing.items(), key=lambda x: -x[1])[:5]:
-            lines.append(f"  - `{col}`: {pct:.1%} missing")
-    else:
-        lines.append("- :white_check_mark: No columns with >5% missing values")
-
-    # Duplicates
-    if data_result.duplicate_count > 0:
+    if data_result.filtered_columns:
         lines.append(
-            f"- :warning: {data_result.duplicate_count} duplicate rows "
-            f"({data_result.duplicate_pct:.1%} of data)"
+            "- Column scope: "
+            + ", ".join(f"`{column}`" for column in data_result.filtered_columns[:8])
+            + (" ..." if len(data_result.filtered_columns) > 8 else "")
         )
-    else:
-        lines.append("- :white_check_mark: No duplicate rows")
 
-    # Drift
-    if data_result.drift_scores is not None:
-        drifted = {col: psi for col, psi in data_result.drift_scores.items() if psi > 0.1}
-        if drifted:
-            lines.append(f"- :warning: Distribution drift detected in {len(drifted)} column(s)")
-            for col, psi in sorted(drifted.items(), key=lambda x: -x[1])[:5]:
-                lines.append(f"  - `{col}`: PSI = {psi:.3f}")
-        else:
-            lines.append("- :white_check_mark: No significant distribution drift")
+    if data_result.failures:
+        lines.append("- :x: Blocking failures")
+        for failure in data_result.failures[:5]:
+            lines.append(f"  - {failure}")
+    else:
+        lines.append("- :white_check_mark: No blocking data-quality failures")
+
+    if data_result.warnings:
+        lines.append("- :warning: Non-blocking warnings")
+        for warning in data_result.warnings[:5]:
+            lines.append(f"  - {warning}")
+    else:
+        lines.append("- :white_check_mark: No non-blocking data-quality warnings")
+
+    if data_result.missing_value_failures:
+        lines.append("- Missing-value thresholds")
+        for col, pct in sorted(data_result.missing_value_failures.items(), key=lambda item: -item[1])[:5]:
+            threshold = data_result.missing_value_thresholds.get(col, 0.0)
+            lines.append(f"  - `{col}`: {pct:.1%} missing (threshold {threshold:.1%})")
+    elif data_result.missing_value_report:
+        lines.append("- :white_check_mark: Missing-value thresholds respected")
+
+    if data_result.label_distribution is not None:
+        lines.append("- Label distribution")
+        lines.append(f"  - Current `{data_result.label_column}`: {_format_label_distribution(data_result.label_distribution)}")
+        if data_result.baseline_label_distribution is not None:
+            lines.append(
+                f"  - Baseline `{data_result.label_column}`: "
+                f"{_format_label_distribution(data_result.baseline_label_distribution)}"
+            )
+        if data_result.label_distribution_shift:
+            shifted = _format_label_shift(data_result.label_distribution_shift)
+            lines.append(f"  - Share shift: {shifted}")
+
+    guidance = data_result.details.get("guidance", [])
+    if guidance:
+        lines.append("- Helpful notes")
+        for note in guidance[:5]:
+            lines.append(f"  - {note}")
 
     return "\n".join(lines)
+
+
+def _format_label_distribution(distribution: dict[str, int]) -> str:
+    """Format a label distribution with counts and shares."""
+    total = sum(distribution.values())
+    parts: list[str] = []
+    for label, count in sorted(distribution.items()):
+        share = count / total if total else 0.0
+        parts.append(f"`{label}`: {count} ({share:.1%})")
+    return ", ".join(parts)
+
+
+def _format_label_shift(shift: dict[str, float]) -> str:
+    """Format label share deltas."""
+    return ", ".join(
+        f"`{label}` {delta:+.1%}"
+        for label, delta in sorted(shift.items(), key=lambda item: (-abs(item[1]), item[0]))
+    )
 
 
 def _fmt_metric(value: float) -> str:

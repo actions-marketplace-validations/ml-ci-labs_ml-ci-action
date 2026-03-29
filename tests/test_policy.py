@@ -72,6 +72,39 @@ def test_load_advanced_policy_config(tmp_path: Path) -> None:
     assert resolved.metric_severities["loss"] == "warn"
 
 
+def test_load_data_policy_config(tmp_path: Path) -> None:
+    config_path = tmp_path / ".ml-ci.yml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "policy:",
+                "  data:",
+                "    missing_threshold: 0.15",
+                "    missing_thresholds:",
+                "      feature_b: 0.50",
+                "    label_column: label",
+                "    include_columns:",
+                "      - feature_a",
+                "      - feature_b",
+                "      - label",
+                "    exclude_columns:",
+                "      - feature_c",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_policy_config(config_path)
+    resolved = resolve_policy(config, WorkflowPolicyOverrides())
+
+    assert resolved.data_policy.missing_threshold == 0.15
+    assert resolved.data_policy.missing_thresholds["feature_b"] == 0.50
+    assert resolved.data_policy.label_column == "label"
+    assert resolved.data_policy.include_columns == ["feature_a", "feature_b", "label"]
+    assert resolved.data_policy.exclude_columns == ["feature_c"]
+
+
 @pytest.mark.parametrize(
     ("content", "match"),
     [
@@ -85,6 +118,15 @@ def test_load_advanced_policy_config(tmp_path: Path) -> None:
             "direction must be one of",
         ),
         ("version: 1\npolicy:\n  regression_tolerance: nope\n", "expected a non-negative number"),
+        ("version: 1\npolicy:\n  data:\n    label_column: ''\n", "expected a non-empty string"),
+        (
+            "version: 1\npolicy:\n  data:\n    include_columns: not-a-list\n",
+            "expected a list",
+        ),
+        (
+            "version: 1\npolicy:\n  data:\n    include_columns:\n      - feature_a\n    exclude_columns:\n      - feature_a\n",
+            "include/exclude overlap",
+        ),
         ("version: 1\nfoo: bar\n", "unknown key"),
     ],
 )
@@ -136,3 +178,13 @@ def test_workflow_overrides_take_precedence(tmp_path: Path) -> None:
     assert resolved.higher_is_better["custom_metric"] is False
     assert resolved.metric_tolerances["custom_metric"] == 0.01
     assert resolved.metric_severities["custom_metric"] == "warn"
+
+
+def test_resolve_policy_uses_default_data_policy_without_config() -> None:
+    resolved = resolve_policy(None, WorkflowPolicyOverrides())
+
+    assert resolved.data_policy.missing_threshold == 0.2
+    assert resolved.data_policy.missing_thresholds == {}
+    assert resolved.data_policy.label_column is None
+    assert resolved.data_policy.include_columns == []
+    assert resolved.data_policy.exclude_columns == []

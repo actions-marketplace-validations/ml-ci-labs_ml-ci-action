@@ -38,7 +38,7 @@ jobs:
           EOF
 
       - name: Validate the model change without a baseline
-        uses: ml-ci-labs/ml-ci-action@v0.3.0
+        uses: ml-ci-labs/ml-ci-action@v0.4.0
         with:
           metrics-file: metrics.json
           model-card: "true"

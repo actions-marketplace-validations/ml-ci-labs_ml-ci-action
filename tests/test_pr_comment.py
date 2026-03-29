@@ -19,6 +19,7 @@ from src.reporters.pr_comment import (
 )
 from src.utils.metrics import MetricComparison
 from src.utils.stats import RegressionResult
+from src.validators.data_validator import DataValidationResult
 from src.validators.model_validator import ModelValidationResult
 
 
@@ -57,6 +58,45 @@ def _make_model_result(regression: bool = False) -> ModelValidationResult:
         framework="pytorch",
         summary="All 3 metrics within tolerance" if not regression else "REGRESSION DETECTED: 1 of 3 metrics degraded",
     )
+
+
+def _make_data_result(*, failing: bool = False, warning: bool = False, label_shift: bool = False) -> DataValidationResult:
+    result = DataValidationResult(
+        schema_valid=not failing,
+        schema_errors=[
+            "Current data is missing baseline column(s): `feature_b`. Add them back, exclude them with `policy.data.exclude_columns`, or refresh the baseline if the schema change is intentional."
+        ]
+        if failing
+        else [],
+        missing_value_report={"feature_a": 0.10, "label": 0.0},
+        missing_value_failures={"feature_a": 0.10} if failing else {},
+        missing_value_thresholds={"feature_a": 0.05, "label": 0.20},
+        duplicate_count=2 if warning else 0,
+        duplicate_pct=0.05 if warning else 0.0,
+        label_column="label",
+        label_distribution={"0": 8, "1": 12},
+        baseline_label_distribution={"0": 10, "1": 10},
+        label_distribution_shift={"0": -0.10, "1": 0.10} if label_shift else None,
+        label_shift_detected=label_shift,
+        drift_scores={"feature_a": 0.15} if warning else {},
+        drift_detected=warning,
+        filtered_columns=["feature_a", "label"],
+        warnings=[],
+        failures=[],
+        overall_passed=not failing,
+        details={
+            "guidance": [
+                "No `baseline-data-path` provided, so schema comparison, drift checks, and label shift detection were skipped."
+            ]
+        },
+    )
+    if warning:
+        result.warnings.append("Found 2 duplicate row(s) (5.0% of filtered data).")
+    if label_shift:
+        result.warnings.append("Label distribution shifted by more than 10% for `1` (+10.0%).")
+    if failing:
+        result.failures.append("Missing-value thresholds exceeded for `feature_a` (10.0% > 5.0%)")
+    return result
 
 
 class TestGenerateReport:
@@ -115,6 +155,28 @@ class TestGenerateReport:
         assert "Metric Coverage" in report
         assert "Current-only metrics" in report
         assert "Baseline-only metrics" in report
+
+    def test_data_failure_report_uses_error_header_and_blocking_section(self):
+        report = generate_report(data_result=_make_data_result(failing=True))
+
+        assert "## :x: ML-CI Validation Report" in report
+        assert "Blocking failures" in report
+        assert "Missing-value thresholds" in report
+
+    def test_data_warning_report_uses_warning_header(self):
+        report = generate_report(data_result=_make_data_result(warning=True))
+
+        assert "## :warning: ML-CI Validation Report" in report
+        assert "Non-blocking warnings" in report
+        assert "duplicate row" in report
+
+    def test_label_distribution_is_rendered_in_data_quality_section(self):
+        report = generate_report(data_result=_make_data_result(label_shift=True))
+
+        assert "Label distribution" in report
+        assert "Current `label`" in report
+        assert "Share shift" in report
+        assert "Helpful notes" in report
 
 
 class TestBuildMetricsTable:

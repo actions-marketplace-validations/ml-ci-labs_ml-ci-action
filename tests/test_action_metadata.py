@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 ACTION_PATH = REPO_ROOT / "action.yml"
 README_PATH = REPO_ROOT / "README.md"
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
+PAYLOAD_SCHEMA_PATH = REPO_ROOT / "PAYLOAD_SCHEMA.md"
 
 
 def _project_version() -> str:
@@ -26,7 +27,7 @@ def _project_version() -> str:
 def test_action_uses_moving_minor_image_tag() -> None:
     action = yaml.safe_load(ACTION_PATH.read_text(encoding="utf-8"))
     assert action["runs"]["using"] == "docker"
-    assert action["runs"]["image"] == "docker://ghcr.io/ml-ci-labs/ml-ci-action:v0.3"
+    assert action["runs"]["image"] == "docker://ghcr.io/ml-ci-labs/ml-ci-action:v0.4"
 
 
 def test_release_facing_versions_are_consistent() -> None:
@@ -39,11 +40,18 @@ def test_release_facing_versions_are_consistent() -> None:
     assert set(action_refs) == {f"ml-ci-labs/ml-ci-action@v{version}"}
 
 
-def test_action_metadata_exposes_sprint_3_contract() -> None:
+def test_action_metadata_exposes_sprint_5_contract() -> None:
     action = yaml.safe_load(ACTION_PATH.read_text(encoding="utf-8"))
 
     assert "report-mode" in action["inputs"]
     assert "baseline-ref" in action["inputs"]
     assert "baseline-path" in action["inputs"]
+    assert "upload-url" in action["inputs"]
+    assert "upload-token" in action["inputs"]
     assert "report-markdown-path" in action["outputs"]
     assert "report-json-path" in action["outputs"]
+    assert "app-connected" in action["outputs"]
+
+
+def test_payload_schema_document_exists() -> None:
+    assert PAYLOAD_SCHEMA_PATH.exists()

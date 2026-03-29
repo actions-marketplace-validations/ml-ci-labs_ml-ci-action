@@ -73,6 +73,7 @@ def resolve_path(path: str) -> str:
 def emit_outputs(
     validation_passed: bool,
     regression_detected: bool,
+    app_connected: bool = False,
     model_card_path: str = "",
     report_markdown_path: str = "",
     report_json_path: str = "",
@@ -81,6 +82,7 @@ def emit_outputs(
     """Emit all declared action outputs before exiting."""
     set_output("validation-passed", str(validation_passed).lower())
     set_output("regression-detected", str(regression_detected).lower())
+    set_output("app-connected", str(app_connected).lower())
     set_output("model-card-path", model_card_path)
     set_output("report-markdown-path", report_markdown_path)
     set_output("report-json-path", report_json_path)
@@ -131,6 +133,8 @@ def main() -> None:
     n_bootstrap = int(get_input("N-BOOTSTRAP", default="10000"))
     confidence = float(get_input("CONFIDENCE", default="0.95"))
     higher_is_better_raw = get_input("HIGHER-IS-BETTER", default="")
+    upload_url = get_input("UPLOAD-URL", default="")
+    upload_token = get_input("UPLOAD-TOKEN", default="")
 
     # --- Parse higher-is-better overrides ---
     higher_is_better: dict[str, bool] | None = None
@@ -156,10 +160,15 @@ def main() -> None:
         get_pr_number,
         post_or_update_comment,
     )
+    from src.utils.app_client import (
+        UploadResult,
+        detect_app_connection,
+        upload_run_payload,
+    )
+    from src.utils.app_payload import build_run_payload
     from src.utils.metrics import (
         BaselineSource,
         BaselineFetchError,
-        MetricsData,
         load_metrics,
         load_metrics_from_github,
         resolve_baseline_source,
@@ -236,6 +245,13 @@ def main() -> None:
     print(
         "::notice::Effective regression policy: "
         f"test={policy.regression_test}, tolerance={policy.regression_tolerance:.1%}"
+    )
+    print(
+        "::notice::Effective data policy: "
+        f"missing_threshold={policy.data_policy.missing_threshold:.1%}, "
+        f"label_column={policy.data_policy.label_column or 'none'}, "
+        f"include_columns={policy.data_policy.include_columns or 'all'}, "
+        f"exclude_columns={policy.data_policy.exclude_columns or 'none'}"
     )
 
     # --- Load current metrics ---
@@ -423,9 +439,17 @@ def main() -> None:
                 data_path=resolved_data,
                 baseline_data_path=resolved_baseline_data,
                 drift_threshold=drift_threshold,
+                label_column=policy.data_policy.label_column,
+                missing_threshold=policy.data_policy.missing_threshold,
+                missing_thresholds=policy.data_policy.missing_thresholds,
+                include_columns=policy.data_policy.include_columns,
+                exclude_columns=policy.data_policy.exclude_columns,
             )
             status = "passed" if data_result.overall_passed else "FAILED"
-            print(f"::notice::Data validation {status}")
+            print(
+                f"::notice::Data validation {status} "
+                f"({data_result.failure_count} failure(s), {data_result.warning_count} warning(s))"
+            )
         except Exception as e:
             print(f"::warning::Data validation failed: {e}")
 
@@ -462,6 +486,13 @@ def main() -> None:
             "available": baseline_source.available,
             "reason": baseline_source.reason,
         },
+        "data_policy": {
+            "missing_threshold": policy.data_policy.missing_threshold,
+            "missing_thresholds": policy.data_policy.missing_thresholds,
+            "label_column": policy.data_policy.label_column,
+            "include_columns": policy.data_policy.include_columns,
+            "exclude_columns": policy.data_policy.exclude_columns,
+        },
     }
 
     regression_detected = model_result is not None and model_result.regression_result.regression_detected
@@ -495,6 +526,87 @@ def main() -> None:
             "blocking_detected": blocking_regression_detected,
             "details": model_result.regression_result.details,
         }
+    if data_result:
+        report_data["data_validation"] = {
+            "schema_valid": data_result.schema_valid,
+            "schema_errors": data_result.schema_errors,
+            "schema_warnings": data_result.schema_warnings,
+            "missing_value_report": data_result.missing_value_report,
+            "missing_value_failures": data_result.missing_value_failures,
+            "missing_value_thresholds": data_result.missing_value_thresholds,
+            "duplicate_count": data_result.duplicate_count,
+            "duplicate_pct": data_result.duplicate_pct,
+            "label_column": data_result.label_column,
+            "label_distribution": data_result.label_distribution,
+            "baseline_label_distribution": data_result.baseline_label_distribution,
+            "label_distribution_shift": data_result.label_distribution_shift,
+            "label_shift_detected": data_result.label_shift_detected,
+            "drift_scores": data_result.drift_scores,
+            "drift_detected": data_result.drift_detected,
+            "filtered_columns": data_result.filtered_columns,
+            "warnings": data_result.warnings,
+            "failures": data_result.failures,
+            "details": data_result.details,
+        }
+
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    connection_status = detect_app_connection(repo=repo, token=upload_token)
+    app_connected = connection_status.connected
+    report_data["app_connected"] = app_connected
+
+    upload_result = UploadResult(
+        attempted=False,
+        connected=app_connected,
+        succeeded=False,
+        failure_reason=None,
+    )
+    if upload_url and upload_token and app_connected:
+        payload = build_run_payload(
+            current=current,
+            report_data=report_data,
+            model_card_path=model_card_path,
+        )
+        upload_result = upload_run_payload(
+            upload_url=upload_url,
+            token=upload_token,
+            payload=payload,
+        )
+        if upload_result.succeeded:
+            print("::notice::Uploaded ML-CI run payload")
+        else:
+            print(
+                "::warning::Failed to upload ML-CI run payload: "
+                f"{upload_result.failure_reason or 'upload_failed'}"
+            )
+    elif upload_url and not upload_token:
+        upload_result = UploadResult(
+            attempted=False,
+            connected=False,
+            succeeded=False,
+            failure_reason="upload_token_missing",
+        )
+    elif upload_token and not upload_url:
+        upload_result = UploadResult(
+            attempted=False,
+            connected=app_connected,
+            succeeded=False,
+            failure_reason="upload_url_missing",
+        )
+    elif upload_url and upload_token and not app_connected:
+        upload_result = UploadResult(
+            attempted=False,
+            connected=False,
+            succeeded=False,
+            failure_reason=connection_status.reason or "repo_not_accessible",
+        )
+
+    if upload_token and not app_connected and connection_status.reason:
+        print(
+            "::notice::ML-CI App token could not reach this repository: "
+            f"{connection_status.reason}"
+        )
+
+    report_data["upload"] = upload_result.as_dict()
 
     markdown_report = generate_report(
         model_result=model_result,
@@ -537,6 +649,7 @@ def main() -> None:
     emit_outputs(
         validation_passed=validation_passed,
         regression_detected=regression_detected,
+        app_connected=app_connected,
         model_card_path=model_card_path or "",
         report_markdown_path=report_markdown_path,
         report_json_path=report_json_path,

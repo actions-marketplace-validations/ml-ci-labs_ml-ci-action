@@ -78,12 +78,22 @@ inputs:
     description: 'GitHub token for API access (PR comments, baseline fetching). Defaults to the automatic token.'
     required: false
     default: ${{ github.token }}
+  upload-url:
+    description: 'Optional ML-CI App ingest endpoint. When unset, the action stays fully standalone.'
+    required: false
+    default: ''
+  upload-token:
+    description: 'Optional ML-CI App installation token used for install detection and payload upload.'
+    required: false
+    default: ''
 
 outputs:
   validation-passed:
     description: 'Whether all validation checks passed (true/false)'
   regression-detected:
     description: 'Whether a model performance regression was detected (true/false)'
+  app-connected:
+    description: 'Whether the provided ML-CI App token can reach the current repository (true/false)'
   model-card-path:
     description: 'Path to the generated model card file (empty if not generated)'
   report-markdown-path:
@@ -95,4 +105,4 @@ outputs:
 
 runs:
   using: 'docker'
-  image: 'docker://ghcr.io/ml-ci-labs/ml-ci-action:v0.3'
+  image: 'docker://ghcr.io/ml-ci-labs/ml-ci-action:v0.4'
