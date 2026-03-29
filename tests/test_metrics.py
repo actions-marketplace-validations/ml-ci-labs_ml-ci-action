@@ -8,12 +8,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.utils.metrics import (
+    BaselineSource,
     BaselineFetchError,
     MetricsData,
     _is_higher_better,
     compare_metrics,
     load_metrics,
     load_metrics_from_github,
+    resolve_baseline_source,
     validate_paired_observations,
 )
 
@@ -80,6 +82,62 @@ class TestLoadMetricsFromGithub:
                 path="metrics.json",
                 ref="main",
                 token="token123",
+            )
+
+
+class TestResolveBaselineSource:
+    def test_no_baseline_requested(self):
+        baseline = resolve_baseline_source(metrics_file="metrics.json")
+        assert baseline == BaselineSource(mode="none", reason="not_configured")
+
+    def test_local_baseline_path(self):
+        baseline = resolve_baseline_source(
+            metrics_file="metrics.json",
+            baseline_metrics="artifacts/baseline.json",
+        )
+        assert baseline.mode == "local"
+        assert baseline.resolved_path == "artifacts/baseline.json"
+
+    def test_legacy_remote_baseline_uses_metrics_file_path(self):
+        baseline = resolve_baseline_source(
+            metrics_file="metrics.json",
+            baseline_metrics="main",
+        )
+        assert baseline.mode == "remote-legacy"
+        assert baseline.resolved_ref == "main"
+        assert baseline.resolved_path == "metrics.json"
+
+    def test_explicit_remote_baseline_defaults_to_metrics_file_path(self):
+        baseline = resolve_baseline_source(
+            metrics_file="reports/current.json",
+            baseline_ref="release/2026-03-01",
+        )
+        assert baseline.mode == "remote-explicit"
+        assert baseline.resolved_ref == "release/2026-03-01"
+        assert baseline.resolved_path == "reports/current.json"
+
+    def test_explicit_remote_baseline_uses_explicit_path(self):
+        baseline = resolve_baseline_source(
+            metrics_file="reports/current.json",
+            baseline_ref="release/2026-03-01",
+            baseline_path="baselines/model.json",
+        )
+        assert baseline.mode == "remote-explicit"
+        assert baseline.resolved_path == "baselines/model.json"
+
+    def test_baseline_path_requires_baseline_ref(self):
+        with pytest.raises(ValueError, match="baseline-path"):
+            resolve_baseline_source(
+                metrics_file="metrics.json",
+                baseline_path="baseline.json",
+            )
+
+    def test_explicit_remote_rejects_local_baseline_metrics_mix(self):
+        with pytest.raises(ValueError, match="Cannot combine a local 'baseline-metrics' path"):
+            resolve_baseline_source(
+                metrics_file="metrics.json",
+                baseline_metrics="baseline.json",
+                baseline_ref="main",
             )
 
     @patch("src.utils.metrics.requests.get")

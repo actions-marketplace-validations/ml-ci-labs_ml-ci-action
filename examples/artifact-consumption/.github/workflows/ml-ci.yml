@@ -1,0 +1,42 @@
+name: ML-CI Artifact Consumption Example
+
+on:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Simulate evaluation artifacts
+        run: |
+          cat > metrics.json <<'EOF'
+          {
+            "model_name": "artifact-demo-model",
+            "framework": "pytorch",
+            "metrics": {
+              "accuracy": 0.944,
+              "loss": 0.149
+            }
+          }
+          EOF
+
+      - name: Run ML-CI and emit report artifacts
+        id: ml_ci
+        uses: ml-ci-labs/ml-ci-action@v0.3.0
+        with:
+          metrics-file: metrics.json
+          report-mode: artifact
+          fail-on-regression: "true"
+
+      - name: Consume the JSON artifact in a downstream step
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("${{ steps.ml_ci.outputs.report-json-path }}").read_text())
+          print("Validation passed:", report["validation_passed"])
+          print("Shared metrics:", report["shared_metrics"])
+          PY

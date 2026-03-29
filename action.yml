@@ -41,9 +41,12 @@ inputs:
     required: false
     default: 'true'
   comment-on-pr:
-    description: 'Post validation results as a PR comment (true/false)'
+    description: 'Legacy toggle for PR comments when report-mode is unset (true/false)'
     required: false
     default: 'true'
+  report-mode:
+    description: 'Report delivery mode: comment, artifact, or both. Defaults to comment when unset.'
+    required: false
   alpha:
     description: 'Significance level for Wilcoxon test (0.0-1.0)'
     required: false
@@ -59,6 +62,14 @@ inputs:
   higher-is-better:
     description: 'JSON object mapping metric names to direction (true=higher is better). Overrides automatic inference.'
     required: false
+  baseline-ref:
+    description: 'Remote git ref to fetch baseline metrics from. Enables explicit remote baseline mode.'
+    required: false
+    default: ''
+  baseline-path:
+    description: 'Path to the remote baseline metrics file. Requires baseline-ref and defaults to metrics-file.'
+    required: false
+    default: ''
   framework:
     description: 'ML framework hint used only when the metrics file omits framework metadata or reports unknown'
     required: false
@@ -75,6 +86,10 @@ outputs:
     description: 'Whether a model performance regression was detected (true/false)'
   model-card-path:
     description: 'Path to the generated model card file (empty if not generated)'
+  report-markdown-path:
+    description: 'Path to the generated markdown report artifact (empty unless report-mode includes artifact)'
+  report-json-path:
+    description: 'Path to the generated JSON report artifact (empty unless report-mode includes artifact)'
   report-json:
     description: 'Full validation report as a JSON string'
 

@@ -17,6 +17,7 @@ EXAMPLE_WORKFLOWS = {
     "cross_validation": REPO_ROOT / "examples/cross-validation/.github/workflows/ml-ci.yml",
     "config_minimal": REPO_ROOT / "examples/config-minimal/.github/workflows/ml-ci.yml",
     "config_advanced": REPO_ROOT / "examples/config-advanced/.github/workflows/ml-ci.yml",
+    "artifact_consumption": REPO_ROOT / "examples/artifact-consumption/.github/workflows/ml-ci.yml",
 }
 
 
@@ -89,3 +90,13 @@ def test_config_advanced_example_relies_on_repo_policy_file() -> None:
     assert step["with"]["baseline-metrics"] == "main"
     assert "higher-is-better" not in step["with"]
     assert (EXAMPLE_WORKFLOWS["config_advanced"].parents[2] / ".ml-ci.yml").exists()
+
+
+def test_artifact_consumption_example_uses_report_artifacts() -> None:
+    workflow = _load_yaml(EXAMPLE_WORKFLOWS["artifact_consumption"])
+    steps = workflow["jobs"]["validate"]["steps"]
+    validate_step = next(step for step in steps if step.get("id") == "ml_ci")
+    assert validate_step["uses"] == _expected_action_ref()
+    assert validate_step["with"]["report-mode"] == "artifact"
+    consume_step = steps[-1]
+    assert "report-json-path" in consume_step["run"]

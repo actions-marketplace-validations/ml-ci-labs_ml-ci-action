@@ -82,6 +82,36 @@ jobs:
           fail-on-regression: "true"
           github-token: ${{ github.token }}
 
+  artifact-report-pass:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use local Dockerfile for self-test
+        run: python scripts/use_local_action_runtime.py
+
+      - name: Run ML-CI with artifact-only report mode
+        id: artifact_run
+        uses: ./
+        with:
+          metrics-file: tests/fixtures/current_metrics.json
+          baseline-metrics: tests/fixtures/baseline_metrics.json
+          report-mode: artifact
+          fail-on-regression: "true"
+
+      - name: Assert report artifacts exist and contain JSON
+        run: |
+          test -f "${{ steps.artifact_run.outputs.report-markdown-path }}"
+          test -f "${{ steps.artifact_run.outputs.report-json-path }}"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("${{ steps.artifact_run.outputs.report-json-path }}").read_text())
+          assert "baseline_source" in report
+          assert "shared_metrics" in report
+          PY
+
   wilcoxon-pass:
     runs-on: ubuntu-latest
     steps:

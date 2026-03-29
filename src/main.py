@@ -74,17 +74,39 @@ def emit_outputs(
     validation_passed: bool,
     regression_detected: bool,
     model_card_path: str = "",
+    report_markdown_path: str = "",
+    report_json_path: str = "",
     report_data: dict | None = None,
 ) -> None:
     """Emit all declared action outputs before exiting."""
     set_output("validation-passed", str(validation_passed).lower())
     set_output("regression-detected", str(regression_detected).lower())
     set_output("model-card-path", model_card_path)
+    set_output("report-markdown-path", report_markdown_path)
+    set_output("report-json-path", report_json_path)
     payload = report_data or {
         "validation_passed": validation_passed,
         "regression_detected": regression_detected,
     }
     set_multiline_output("report-json", json.dumps(payload, indent=2))
+
+
+def write_report_artifacts(workspace: str, markdown_report: str, report_data: dict) -> tuple[str, str]:
+    """Persist stable markdown and JSON artifacts for downstream workflow steps."""
+    artifact_dir = os.path.join(workspace, ".ml-ci")
+    os.makedirs(artifact_dir, exist_ok=True)
+
+    markdown_path = os.path.join(artifact_dir, "validation-report.md")
+    json_path = os.path.join(artifact_dir, "validation-report.json")
+
+    with open(markdown_path, "w", encoding="utf-8") as handle:
+        handle.write(markdown_report)
+
+    with open(json_path, "w", encoding="utf-8") as handle:
+        json.dump(report_data, handle, indent=2)
+        handle.write("\n")
+
+    return markdown_path, json_path
 
 
 def main() -> None:
@@ -100,6 +122,9 @@ def main() -> None:
     model_card_enabled = get_input("MODEL-CARD", default="false").lower() == "true"
     fail_on_regression = get_input("FAIL-ON-REGRESSION", default="true").lower() == "true"
     comment_on_pr = get_input("COMMENT-ON-PR", default="true").lower() == "true"
+    report_mode_raw = get_input("REPORT-MODE", default="")
+    baseline_ref = get_input("BASELINE-REF", default="")
+    baseline_path = get_input("BASELINE-PATH", default="")
     github_token = get_input("GITHUB-TOKEN", default=os.environ.get("GITHUB_TOKEN", ""))
     framework_hint = get_input("FRAMEWORK", default="auto")
     alpha = float(get_input("ALPHA", default="0.05"))
@@ -132,10 +157,12 @@ def main() -> None:
         post_or_update_comment,
     )
     from src.utils.metrics import (
+        BaselineSource,
         BaselineFetchError,
         MetricsData,
         load_metrics,
         load_metrics_from_github,
+        resolve_baseline_source,
     )
     from src.utils.policy import (
         PolicyConfigError,
@@ -148,6 +175,37 @@ def main() -> None:
     from src.validators.model_validator import validate_model
 
     workspace = os.environ.get("GITHUB_WORKSPACE", ".")
+
+    explicit_report_mode = has_input("REPORT-MODE")
+    if explicit_report_mode:
+        report_mode = report_mode_raw.lower()
+        if report_mode not in {"comment", "artifact", "both"}:
+            print(
+                "::error::Invalid 'report-mode'. Expected one of: comment, artifact, both"
+            )
+            emit_outputs(
+                validation_passed=False,
+                regression_detected=False,
+                report_data={
+                    "validation_passed": False,
+                    "regression_detected": False,
+                    "error": "Invalid report-mode",
+                },
+            )
+            sys.exit(1)
+        comment_enabled = report_mode in {"comment", "both"}
+        artifact_enabled = report_mode in {"artifact", "both"}
+        if comment_on_pr != comment_enabled or artifact_enabled:
+            print("::notice::'report-mode' takes precedence over legacy 'comment-on-pr'")
+    else:
+        comment_enabled = comment_on_pr
+        artifact_enabled = False
+        if not comment_on_pr:
+            print(
+                "::notice::PR comments disabled via legacy 'comment-on-pr'. "
+                "Use 'report-mode: artifact' or 'both' to emit file artifacts."
+            )
+
     config = None
     policy_path = discover_policy_file(workspace)
     if policy_path is not None:
@@ -207,44 +265,102 @@ def main() -> None:
 
     # --- Load baseline metrics ---
     baseline: MetricsData | None = None
-    if baseline_metrics:
-        if baseline_metrics.lower() in ("main", "master"):
-            # Fetch from GitHub API
-            repo = os.environ.get("GITHUB_REPOSITORY", "")
-            if not repo:
-                print("::warning::GITHUB_REPOSITORY not set, cannot fetch baseline from remote")
-            elif not github_token:
-                print("::warning::GITHUB_TOKEN not provided, cannot fetch baseline from remote")
-            else:
-                try:
-                    baseline = load_metrics_from_github(
-                        repo=repo,
-                        path=metrics_file,
-                        ref=baseline_metrics.lower(),
-                        token=github_token,
-                    )
-                    print(f"::notice::Loaded baseline from {baseline_metrics} branch")
-                except FileNotFoundError as e:
-                    print(f"::warning::{e}")
-                    print("::notice::Proceeding without baseline comparison")
-                except BaselineFetchError as e:
-                    print(f"::warning::{e}")
-                    print(
-                        "::notice::Proceeding without baseline comparison. "
-                        "Prefer a local file path for 'baseline-metrics' when remote fetches are blocked."
-                    )
-                except Exception as e:
-                    print(f"::warning::Failed to fetch baseline: {e}")
-                    print("::notice::Proceeding without baseline comparison")
+    try:
+        baseline_source = resolve_baseline_source(
+            metrics_file=metrics_file,
+            baseline_metrics=baseline_metrics,
+            baseline_ref=baseline_ref,
+            baseline_path=baseline_path,
+        )
+    except ValueError as e:
+        print(f"::error::{e}")
+        emit_outputs(
+            validation_passed=False,
+            regression_detected=False,
+            report_data={
+                "validation_passed": False,
+                "regression_detected": False,
+                "error": str(e),
+            },
+        )
+        sys.exit(1)
+
+    if baseline_source.mode == "remote-explicit" and baseline_metrics.lower() in {"main", "master"}:
+        print(
+            "::notice::Using explicit remote baseline inputs. "
+            "Ignoring legacy 'baseline-metrics' branch shortcut."
+        )
+
+    if baseline_source.mode in {"remote-explicit", "remote-legacy"}:
+        repo = os.environ.get("GITHUB_REPOSITORY", "")
+        if not repo:
+            print("::warning::GITHUB_REPOSITORY not set, cannot fetch baseline from remote")
+            baseline_source = BaselineSource(
+                **{**baseline_source.__dict__, "reason": "missing_repository"}
+            )
+        elif not github_token:
+            print("::warning::GITHUB_TOKEN not provided, cannot fetch baseline from remote")
+            baseline_source = BaselineSource(
+                **{**baseline_source.__dict__, "reason": "missing_token"}
+            )
         else:
-            # Load from local file
-            baseline_path = resolve_path(baseline_metrics)
             try:
-                baseline = load_metrics(baseline_path)
-                print(f"::notice::Loaded baseline from {baseline_path}")
-            except (FileNotFoundError, ValueError) as e:
-                print(f"::warning::Failed to load baseline: {e}")
+                baseline = load_metrics_from_github(
+                    repo=repo,
+                    path=baseline_source.resolved_path or metrics_file,
+                    ref=baseline_source.resolved_ref or "",
+                    token=github_token,
+                )
+                baseline_source = BaselineSource(
+                    **{**baseline_source.__dict__, "available": True}
+                )
+                print(
+                    f"::notice::Loaded remote baseline from "
+                    f"{baseline_source.resolved_ref}:{baseline_source.resolved_path}"
+                )
+            except FileNotFoundError as e:
+                print(f"::warning::{e}")
                 print("::notice::Proceeding without baseline comparison")
+                baseline_source = BaselineSource(
+                    **{**baseline_source.__dict__, "reason": "not_found"}
+                )
+            except BaselineFetchError as e:
+                print(f"::warning::{e}")
+                print(
+                    "::notice::Proceeding without baseline comparison. "
+                    "Prefer a local file path for 'baseline-metrics' when remote fetches are blocked."
+                )
+                baseline_source = BaselineSource(
+                    **{**baseline_source.__dict__, "reason": "fetch_blocked"}
+                )
+            except Exception as e:
+                print(f"::warning::Failed to fetch baseline: {e}")
+                print("::notice::Proceeding without baseline comparison")
+                baseline_source = BaselineSource(
+                    **{**baseline_source.__dict__, "reason": "fetch_failed"}
+                )
+    elif baseline_source.mode == "local":
+        resolved_baseline_path = resolve_path(baseline_source.resolved_path or baseline_metrics)
+        try:
+            baseline = load_metrics(resolved_baseline_path)
+            baseline_source = BaselineSource(
+                **{
+                    **baseline_source.__dict__,
+                    "available": True,
+                    "resolved_path": resolved_baseline_path,
+                }
+            )
+            print(f"::notice::Loaded baseline from {resolved_baseline_path}")
+        except (FileNotFoundError, ValueError) as e:
+            print(f"::warning::Failed to load baseline: {e}")
+            print("::notice::Proceeding without baseline comparison")
+            baseline_source = BaselineSource(
+                **{
+                    **baseline_source.__dict__,
+                    "resolved_path": resolved_baseline_path,
+                    "reason": "load_failed",
+                }
+            )
 
     # --- Model validation ---
     model_result = None
@@ -281,6 +397,22 @@ def main() -> None:
     else:
         print("::notice::No baseline available — reporting current metrics only")
 
+    if baseline is not None:
+        shared_metrics = sorted(set(current.metrics.keys()) & set(baseline.metrics.keys()))
+        current_only_metrics = sorted(set(current.metrics.keys()) - set(baseline.metrics.keys()))
+        baseline_only_metrics = sorted(set(baseline.metrics.keys()) - set(current.metrics.keys()))
+    else:
+        shared_metrics = []
+        current_only_metrics = sorted(current.metrics.keys())
+        baseline_only_metrics = []
+
+    if shared_metrics:
+        print(f"::notice::Shared metrics: {', '.join(shared_metrics)}")
+    if current_only_metrics:
+        print(f"::notice::Current-only metrics: {', '.join(current_only_metrics)}")
+    if baseline_only_metrics:
+        print(f"::notice::Baseline-only metrics: {', '.join(baseline_only_metrics)}")
+
     # --- Data validation ---
     data_result = None
     if data_path:
@@ -311,29 +443,27 @@ def main() -> None:
         except Exception as e:
             print(f"::warning::Model card generation failed: {e}")
 
-    # --- PR comment ---
-    if comment_on_pr:
-        pr_number = get_pr_number()
-        repo = os.environ.get("GITHUB_REPOSITORY", "")
-        if pr_number and repo and github_token:
-            try:
-                report = generate_report(
-                    model_result=model_result,
-                    data_result=data_result,
-                    model_card_path=model_card_path,
-                )
-                post_or_update_comment(
-                    repo=repo,
-                    pr_number=pr_number,
-                    body=report,
-                    token=github_token,
-                )
-            except Exception as e:
-                print(f"::warning::Failed to post PR comment: {e}")
-        elif not pr_number:
-            print("::notice::Not running in a PR context — skipping comment")
+    report_data = {
+        "validation_passed": False,
+        "regression_detected": False,
+        "blocking_regression_detected": False,
+        "model_name": current.model_name,
+        "framework": current.framework,
+        "current_metrics": current.metrics,
+        "shared_metrics": shared_metrics,
+        "current_only_metrics": current_only_metrics,
+        "baseline_only_metrics": baseline_only_metrics,
+        "baseline_source": {
+            "mode": baseline_source.mode,
+            "requested_ref": baseline_source.requested_ref,
+            "requested_path": baseline_source.requested_path,
+            "resolved_ref": baseline_source.resolved_ref,
+            "resolved_path": baseline_source.resolved_path,
+            "available": baseline_source.available,
+            "reason": baseline_source.reason,
+        },
+    }
 
-    # --- Set outputs ---
     regression_detected = model_result is not None and model_result.regression_result.regression_detected
     blocking_regression_detected = (
         model_result is not None and model_result.blocking_regression_count > 0
@@ -341,14 +471,9 @@ def main() -> None:
     data_passed = data_result is None or data_result.overall_passed
     validation_passed = not blocking_regression_detected and data_passed
 
-    report_data = {
-        "validation_passed": validation_passed,
-        "regression_detected": regression_detected,
-        "blocking_regression_detected": blocking_regression_detected,
-        "model_name": current.model_name,
-        "framework": current.framework,
-        "current_metrics": current.metrics,
-    }
+    report_data["validation_passed"] = validation_passed
+    report_data["regression_detected"] = regression_detected
+    report_data["blocking_regression_detected"] = blocking_regression_detected
     if model_result:
         report_data["comparisons"] = [
             {
@@ -370,10 +495,51 @@ def main() -> None:
             "blocking_detected": blocking_regression_detected,
             "details": model_result.regression_result.details,
         }
+
+    markdown_report = generate_report(
+        model_result=model_result,
+        data_result=data_result,
+        model_card_path=model_card_path,
+        current_metrics=current.metrics,
+        current_only_metrics=current_only_metrics,
+        baseline_only_metrics=baseline_only_metrics,
+        baseline_source=report_data["baseline_source"],
+    )
+
+    report_markdown_path = ""
+    report_json_path = ""
+    if artifact_enabled:
+        report_markdown_path, report_json_path = write_report_artifacts(
+            workspace=workspace,
+            markdown_report=markdown_report,
+            report_data=report_data,
+        )
+        print(f"::notice::Report artifacts written to {report_markdown_path} and {report_json_path}")
+
+    # --- PR comment ---
+    if comment_enabled:
+        pr_number = get_pr_number()
+        repo = os.environ.get("GITHUB_REPOSITORY", "")
+        if pr_number and repo and github_token:
+            try:
+                post_or_update_comment(
+                    repo=repo,
+                    pr_number=pr_number,
+                    body=markdown_report,
+                    token=github_token,
+                )
+            except Exception as e:
+                print(f"::warning::Failed to post PR comment: {e}")
+        elif not pr_number:
+            print("::notice::Not running in a PR context — skipping comment")
+
+    # --- Set outputs ---
     emit_outputs(
         validation_passed=validation_passed,
         regression_detected=regression_detected,
         model_card_path=model_card_path or "",
+        report_markdown_path=report_markdown_path,
+        report_json_path=report_json_path,
         report_data=report_data,
     )
 

@@ -9,8 +9,22 @@ from typing import Any
 
 import requests
 
+
 class BaselineFetchError(RuntimeError):
     """Raised when a remote baseline cannot be fetched with actionable context."""
+
+
+@dataclass(frozen=True)
+class BaselineSource:
+    """Normalized description of how baseline metrics should be resolved."""
+
+    mode: str
+    requested_ref: str | None = None
+    requested_path: str | None = None
+    resolved_ref: str | None = None
+    resolved_path: str | None = None
+    available: bool = False
+    reason: str | None = None
 
 
 # Default metric direction: True = higher is better, False = lower is better
@@ -93,6 +107,54 @@ class MetricComparison:
     severity: str = "fail"
     improved: bool = False  # True if change is in the good direction
     regression: bool = False  # True if degradation exceeds tolerance
+
+
+def resolve_baseline_source(
+    metrics_file: str,
+    baseline_metrics: str = "",
+    baseline_ref: str = "",
+    baseline_path: str = "",
+) -> BaselineSource:
+    """Resolve the public baseline contract into one explicit source description."""
+    normalized_baseline = baseline_metrics.strip()
+    normalized_ref = baseline_ref.strip()
+    normalized_path = baseline_path.strip()
+
+    if normalized_path and not normalized_ref:
+        raise ValueError("'baseline-path' requires 'baseline-ref'.")
+
+    if normalized_ref:
+        if normalized_baseline and normalized_baseline.lower() not in {"main", "master"}:
+            raise ValueError(
+                "Cannot combine a local 'baseline-metrics' path with 'baseline-ref' or "
+                "'baseline-path'. Use 'baseline-metrics' alone for local baselines, or "
+                "use 'baseline-ref' with optional 'baseline-path' for remote baselines."
+            )
+        return BaselineSource(
+            mode="remote-explicit",
+            requested_ref=normalized_ref,
+            requested_path=normalized_path or metrics_file,
+            resolved_ref=normalized_ref,
+            resolved_path=normalized_path or metrics_file,
+        )
+
+    if not normalized_baseline:
+        return BaselineSource(mode="none", reason="not_configured")
+
+    if normalized_baseline.lower() in {"main", "master"}:
+        return BaselineSource(
+            mode="remote-legacy",
+            requested_ref=normalized_baseline.lower(),
+            requested_path=metrics_file,
+            resolved_ref=normalized_baseline.lower(),
+            resolved_path=metrics_file,
+        )
+
+    return BaselineSource(
+        mode="local",
+        requested_path=normalized_baseline,
+        resolved_path=normalized_baseline,
+    )
 
 
 def load_metrics(path: str) -> MetricsData:

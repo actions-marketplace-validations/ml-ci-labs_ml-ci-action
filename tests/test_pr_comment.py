@@ -90,9 +90,31 @@ class TestGenerateReport:
         assert COMMENT_MARKER in report
         assert "ML-CI" in report
 
+    def test_current_only_report_contains_current_metrics_table(self):
+        report = generate_report(
+            current_metrics={"accuracy": 0.95, "loss": 0.12},
+            current_only_metrics=["accuracy", "loss"],
+            baseline_source={"mode": "none"},
+        )
+        assert "Current Metrics" in report
+        assert "| Metric | Current |" in report
+        assert "No baseline available" in report
+        assert "Metric Coverage" in report
+
     def test_report_contains_marker_for_idempotent_updates(self):
         report = generate_report(model_result=_make_model_result())
         assert report.startswith(COMMENT_MARKER)
+
+    def test_metric_coverage_section_lists_non_shared_metrics(self):
+        result = _make_model_result()
+        result.current_only_metrics = ["precision"]
+        result.baseline_only_metrics = ["recall"]
+
+        report = generate_report(model_result=result)
+
+        assert "Metric Coverage" in report
+        assert "Current-only metrics" in report
+        assert "Baseline-only metrics" in report
 
 
 class TestBuildMetricsTable:

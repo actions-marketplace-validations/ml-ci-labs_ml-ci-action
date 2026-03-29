@@ -23,6 +23,10 @@ def generate_report(
     model_result: ModelValidationResult | None = None,
     data_result: DataValidationResult | None = None,
     model_card_path: str | None = None,
+    current_metrics: dict[str, float] | None = None,
+    current_only_metrics: list[str] | None = None,
+    baseline_only_metrics: list[str] | None = None,
+    baseline_source: dict[str, Any] | None = None,
 ) -> str:
     """Build a full markdown validation report for a PR comment.
 
@@ -70,17 +74,35 @@ def generate_report(
             sections.append(stat_details)
             sections.append("")
 
-        # New/removed metrics
-        if model_result.current_only_metrics:
-            sections.append(
-                f"**New metrics** (not in baseline): {', '.join(f'`{m}`' for m in model_result.current_only_metrics)}"
-            )
-        if model_result.baseline_only_metrics:
-            sections.append(
-                f"**Removed metrics** (not in current): {', '.join(f'`{m}`' for m in model_result.baseline_only_metrics)}"
-            )
-        if model_result.current_only_metrics or model_result.baseline_only_metrics:
+    elif current_metrics:
+        sections.append("### Current Metrics")
+        sections.append("")
+        sections.append(_build_current_metrics_table(current_metrics))
+        sections.append("")
+
+        baseline_mode = (baseline_source or {}).get("mode")
+        if baseline_mode == "none":
+            sections.append("_No baseline available. Reporting current metrics only._")
             sections.append("")
+
+    coverage_current = current_only_metrics if current_only_metrics is not None else []
+    coverage_baseline = baseline_only_metrics if baseline_only_metrics is not None else []
+    if model_result:
+        coverage_current = model_result.current_only_metrics
+        coverage_baseline = model_result.baseline_only_metrics
+
+    if coverage_current or coverage_baseline:
+        sections.append("### Metric Coverage")
+        sections.append("")
+        if coverage_current:
+            sections.append(
+                f"- Current-only metrics: {', '.join(f'`{m}`' for m in coverage_current)}"
+            )
+        if coverage_baseline:
+            sections.append(
+                f"- Baseline-only metrics: {', '.join(f'`{m}`' for m in coverage_baseline)}"
+            )
+        sections.append("")
 
     # Data Quality section
     if data_result:
@@ -142,6 +164,17 @@ def _build_metrics_table(comparisons: list[MetricComparison]) -> str:
             f"| {comp.name} | {baseline_str} | {current_str} | {delta_str} | {pct_str} | {status} |"
         )
 
+    return "\n".join(lines)
+
+
+def _build_current_metrics_table(metrics: dict[str, float]) -> str:
+    """Build a simple markdown table for current-only reporting."""
+    lines = [
+        "| Metric | Current |",
+        "|--------|---------|",
+    ]
+    for name, value in sorted(metrics.items()):
+        lines.append(f"| {name} | {_fmt_metric(value)} |")
     return "\n".join(lines)
 
 

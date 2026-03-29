@@ -5,6 +5,7 @@ GitHub-native ML validation for pull requests: compare metrics, check tabular da
 - Compare current metrics against `main` or a checked-in baseline and fail CI on regression.
 - Run CSV/Parquet data checks before model changes merge.
 - Post one GitHub-native PR report with model performance, data quality, summary, and model card path.
+- Emit stable markdown and JSON report artifacts for downstream workflow steps.
 
 ![Example ML-CI PR comment from a real GitHub pull request using v0.3.0](./docs/assets/pr-comment-screenshot.png)
 
@@ -49,7 +50,7 @@ jobs:
         uses: ml-ci-labs/ml-ci-action@v0.3.0
         with:
           metrics-file: metrics.json
-          comment-on-pr: "true"
+          report-mode: comment
           github-token: ${{ github.token }}
 ```
 
@@ -63,7 +64,7 @@ Once the same metrics file exists on `main` or `master`, enable branch compariso
           baseline-metrics: main
           regression-test: threshold
           regression-tolerance: "0.02"
-          comment-on-pr: "true"
+          report-mode: comment
           github-token: ${{ github.token }}
 ```
 
@@ -208,6 +209,8 @@ Both methods require `observations` in both current and baseline metrics files. 
 |---|---|---:|---|
 | `metrics-file` | Yes |  | Path to current metrics JSON. |
 | `baseline-metrics` | No | `""` | Local path to baseline metrics, or `main` / `master` to fetch the same path from the default branch. |
+| `baseline-ref` | No | `""` | Explicit remote ref for baseline fetches. Activates explicit remote baseline mode. |
+| `baseline-path` | No | `""` | Explicit remote path for baseline fetches. Requires `baseline-ref` and defaults to `metrics-file`. |
 | `data-path` | No | `""` | Path to CSV or Parquet data for tabular quality checks. |
 | `baseline-data-path` | No | `""` | Path to baseline data for schema and drift comparisons. |
 | `drift-threshold` | No | `0.1` | Maximum PSI score before flagging drift. |
@@ -219,7 +222,8 @@ Both methods require `observations` in both current and baseline metrics files. 
 | `higher-is-better` | No | `""` | JSON object mapping metric names to direction (`true` = higher is better). Overrides auto-inference. |
 | `model-card` | No | `false` | Generate `MODEL_CARD.md`. |
 | `fail-on-regression` | No | `true` | Exit non-zero when regression or data-quality failure is detected. |
-| `comment-on-pr` | No | `true` | Post or update the PR report comment. |
+| `comment-on-pr` | No | `true` | Legacy PR-comment toggle used only when `report-mode` is unset. |
+| `report-mode` | No | `comment` | Report delivery mode: `comment`, `artifact`, or `both`. |
 | `framework` | No | `auto` | Framework hint for report metadata when the metrics file omits `framework` or reports `unknown`. |
 | `github-token` | No | `${{ github.token }}` | Token used for PR comments and remote baseline fetches. |
 
@@ -237,7 +241,40 @@ Config file notes:
 | `validation-passed` | `true` when no blocking regression or failing data issue was detected. |
 | `regression-detected` | `true` when any shared metric regressed, including `warn`-severity metrics. |
 | `model-card-path` | Output path for the generated model card, if enabled. |
+| `report-markdown-path` | Output path for `.ml-ci/validation-report.md` when `report-mode` includes `artifact`. |
+| `report-json-path` | Output path for `.ml-ci/validation-report.json` when `report-mode` includes `artifact`. |
 | `report-json` | JSON payload describing the validation result. |
+
+## Report Modes
+
+`report-mode` controls where the human-readable report goes:
+
+- `comment`: post or update the PR comment only
+- `artifact`: write `.ml-ci/validation-report.md` and `.ml-ci/validation-report.json` only
+- `both`: do both
+
+If you still use `comment-on-pr`, that legacy toggle is honored only when `report-mode` is unset.
+
+Example artifact-only workflow:
+
+```yaml
+      - name: Run ML-CI and emit artifacts
+        id: ml_ci
+        uses: ml-ci-labs/ml-ci-action@v0.3.0
+        with:
+          metrics-file: metrics.json
+          report-mode: artifact
+
+      - name: Consume the JSON artifact
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("${{ steps.ml_ci.outputs.report-json-path }}").read_text())
+          print(report["validation_passed"])
+          PY
+```
 
 ## What Shows Up In The PR
 
@@ -328,13 +365,27 @@ That keeps the review loop inside GitHub: reviewers can see whether the PR impro
 
 ## Baseline Modes
 
-`baseline-metrics` supports three modes:
+ML-CI supports four baseline modes:
 
 - Local file path: compare against a checked-in artifact or prior run output.
 - `main` or `master`: fetch the same metrics path from the named branch via the GitHub Contents API.
+- `baseline-ref` with optional `baseline-path`: fetch a remote baseline from an explicit ref and path.
 - Empty: skip baseline comparison and report current metrics only.
 
 If the baseline file is missing on the branch, the action degrades gracefully to current-only reporting.
+
+Explicit remote override example:
+
+```yaml
+      - name: Compare against a release baseline artifact
+        uses: ml-ci-labs/ml-ci-action@v0.3.0
+        with:
+          metrics-file: metrics.json
+          baseline-ref: release/2026-03-15
+          baseline-path: baselines/fraud/latest.json
+          report-mode: both
+          github-token: ${{ github.token }}
+```
 
 ## Data Validation
 
@@ -376,6 +427,7 @@ If you already use a platform like ClearML, W&B, or MLflow, ML-CI is best though
 - [Cross-validation with Wilcoxon test](./examples/cross-validation/.github/workflows/ml-ci.yml)
 - [Repo policy minimal example](./examples/config-minimal/.github/workflows/ml-ci.yml)
 - [Repo policy advanced example](./examples/config-advanced/.github/workflows/ml-ci.yml)
+- [Artifact-only run with downstream report consumption](./examples/artifact-consumption/.github/workflows/ml-ci.yml)
 
 The example workflows are reference examples. They are not CI jobs that run automatically inside this repository.
 

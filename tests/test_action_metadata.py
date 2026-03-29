@@ -37,3 +37,13 @@ def test_release_facing_versions_are_consistent() -> None:
     assert REPORT_VERSION == version
     assert action_refs
     assert set(action_refs) == {f"ml-ci-labs/ml-ci-action@v{version}"}
+
+
+def test_action_metadata_exposes_sprint_3_contract() -> None:
+    action = yaml.safe_load(ACTION_PATH.read_text(encoding="utf-8"))
+
+    assert "report-mode" in action["inputs"]
+    assert "baseline-ref" in action["inputs"]
+    assert "baseline-path" in action["inputs"]
+    assert "report-markdown-path" in action["outputs"]
+    assert "report-json-path" in action["outputs"]

@@ -482,3 +482,181 @@ def test_statistical_method_without_observations_fails_with_clear_error(
     assert exc_info.value.code == 1
     outputs = _parse_outputs(output_path)
     assert outputs["validation-passed"] == "false"
+
+
+def test_report_mode_artifact_writes_stable_report_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_REPORT_MODE", "artifact")
+
+    import src.reporters.pr_comment as pr_comment_module
+
+    mocked_comment = MagicMock()
+    monkeypatch.setattr(pr_comment_module, "post_or_update_comment", mocked_comment)
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    mocked_comment.assert_not_called()
+    assert outputs["report-markdown-path"].endswith(".ml-ci/validation-report.md")
+    assert outputs["report-json-path"].endswith(".ml-ci/validation-report.json")
+    assert Path(outputs["report-markdown-path"]).exists()
+    assert Path(outputs["report-json-path"]).exists()
+
+    artifact_payload = json.loads(Path(outputs["report-json-path"]).read_text())
+    assert artifact_payload["baseline_source"]["mode"] == "none"
+    assert artifact_payload["shared_metrics"] == []
+    assert sorted(artifact_payload["current_only_metrics"]) == ["accuracy", "loss"]
+
+
+def test_report_mode_both_keeps_comment_behavior_and_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_REPORT_MODE", "both")
+    monkeypatch.setenv("INPUT_GITHUB_TOKEN", "token123")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+
+    event_path = tmp_path / "event.json"
+    event_path.write_text(json.dumps({"pull_request": {"number": 7}}))
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+
+    import src.reporters.pr_comment as pr_comment_module
+
+    mocked_comment = MagicMock()
+    monkeypatch.setattr(pr_comment_module, "post_or_update_comment", mocked_comment)
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    mocked_comment.assert_called_once()
+    assert Path(outputs["report-markdown-path"]).exists()
+    assert Path(outputs["report-json-path"]).exists()
+
+
+def test_legacy_comment_toggle_still_works_when_report_mode_is_unset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    import src.reporters.pr_comment as pr_comment_module
+
+    mocked_comment = MagicMock()
+    monkeypatch.setattr(pr_comment_module, "post_or_update_comment", mocked_comment)
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    mocked_comment.assert_not_called()
+    assert outputs["report-markdown-path"] == ""
+    assert outputs["report-json-path"] == ""
+
+
+def test_explicit_remote_baseline_defaults_to_metrics_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_BASELINE_REF", "release-123")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+    monkeypatch.setenv("INPUT_GITHUB_TOKEN", "token123")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+
+    import src.utils.metrics as metrics_module
+
+    mocked_loader = MagicMock(side_effect=FileNotFoundError("missing"))
+    monkeypatch.setattr(metrics_module, "load_metrics_from_github", mocked_loader)
+
+    main_module.main()
+
+    mocked_loader.assert_called_once_with(
+        repo="owner/repo",
+        path="metrics.json",
+        ref="release-123",
+        token="token123",
+    )
+    outputs = _parse_outputs(output_path)
+    report = json.loads(outputs["report-json"])
+    assert report["baseline_source"]["mode"] == "remote-explicit"
+    assert report["baseline_source"]["requested_path"] == "metrics.json"
+
+
+def test_explicit_remote_baseline_uses_explicit_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_BASELINE_REF", "release-123")
+    monkeypatch.setenv("INPUT_BASELINE_PATH", "baselines/metrics.json")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+    monkeypatch.setenv("INPUT_GITHUB_TOKEN", "token123")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+
+    import src.utils.metrics as metrics_module
+
+    mocked_loader = MagicMock(side_effect=FileNotFoundError("missing"))
+    monkeypatch.setattr(metrics_module, "load_metrics_from_github", mocked_loader)
+
+    main_module.main()
+
+    mocked_loader.assert_called_once_with(
+        repo="owner/repo",
+        path="baselines/metrics.json",
+        ref="release-123",
+        token="token123",
+    )
+    outputs = _parse_outputs(output_path)
+    report = json.loads(outputs["report-json"])
+    assert report["baseline_source"]["requested_path"] == "baselines/metrics.json"
+
+
+def test_mixing_local_baseline_metrics_with_explicit_remote_inputs_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_BASELINE_METRICS", "baseline.json")
+    monkeypatch.setenv("INPUT_BASELINE_REF", "release-123")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    with pytest.raises(SystemExit) as exc_info:
+        main_module.main()
+
+    assert exc_info.value.code == 1
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "false"
