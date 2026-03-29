@@ -14,6 +14,7 @@
   - `regression-expected-failure`
   - `data-quality-expected-failure`
 - `.github/workflows/release.yml` publishes and smoke-tests the GHCR image for the tag
+- `.github/workflows/release.yml` creates or updates the matching GitHub Release object for the tag
 
 ## Manual checks
 
@@ -36,4 +37,5 @@
 2. Confirm `main` is green in GitHub Actions.
 3. Tag the merge commit as the current patch release on the `v0.2.x` line.
 4. Confirm `.github/workflows/release.yml` pushed `v0.2.x`, `v0.2`, and `v0` image tags to GHCR.
-5. Publish or update the action on GitHub Marketplace.
+5. Confirm the matching GitHub Release page exists for the exact patch tag and its notes describe the published image tags.
+6. Publish or update the action on GitHub Marketplace.
