@@ -1,11 +1,5 @@
 # ML-CI Action
 
-[![CI](https://img.shields.io/github/actions/workflow/status/ml-ci-labs/ml-ci-action/ci.yml?branch=main&label=CI)](https://github.com/ml-ci-labs/ml-ci-action/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/ml-ci-labs/ml-ci-action)](https://github.com/ml-ci-labs/ml-ci-action/releases)
-[![License](https://img.shields.io/github/license/ml-ci-labs/ml-ci-action)](./LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/ml-ci-labs/ml-ci-action?style=social)](https://github.com/ml-ci-labs/ml-ci-action)
-[![Marketplace](https://img.shields.io/badge/Marketplace-ML--CI-blue?logo=github)](https://github.com/marketplace?query=ml-ci-action)
-
 Model validation, data quality checks, and model cards for GitHub pull requests, in one Action, with no external dependencies.
 
 ![Example ML-CI PR comment](./docs/assets/pr-comment-screenshot.png)
