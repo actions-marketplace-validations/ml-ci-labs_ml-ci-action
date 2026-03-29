@@ -2,6 +2,7 @@
 .github
 .pytest_cache
 .venv
+.uv-cache
 __pycache__
 *.pyc
 docs

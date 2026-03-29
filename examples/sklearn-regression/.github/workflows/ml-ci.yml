@@ -1,4 +1,4 @@
-name: scikit-learn Regression Example
+name: ML-CI Default Branch Baseline Example
 
 on:
   pull_request:
@@ -36,8 +36,8 @@ jobs:
           3,2,1350,382000
           EOF
 
-      - name: Validate metrics and tabular data
-        uses: ml-ci/ml-ci-action@v0.1.0
+      - name: Validate metrics and tabular data against main
+        uses: ml-ci-labs/ml-ci-action@v0.2.1
         with:
           metrics-file: metrics.json
           baseline-metrics: main

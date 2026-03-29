@@ -83,4 +83,4 @@ outputs:
 
 runs:
   using: 'docker'
-  image: 'Dockerfile'
+  image: 'docker://ghcr.io/ml-ci-labs/ml-ci-action:v0.2'
