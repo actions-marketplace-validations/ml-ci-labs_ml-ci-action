@@ -24,7 +24,7 @@ jobs:
 
       - name: Run ML-CI and emit report artifacts
         id: ml_ci
-        uses: ml-ci-labs/ml-ci-action@v0.4.0
+        uses: ml-ci-labs/ml-ci-action@v0.4.1
         with:
           metrics-file: metrics.json
           report-mode: artifact

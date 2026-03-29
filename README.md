@@ -28,7 +28,7 @@ jobs:
         run: python train.py --save-metrics metrics.json
 
       - name: Validate against baseline
-        uses: ml-ci-labs/ml-ci-action@v0.4.0
+        uses: ml-ci-labs/ml-ci-action@v0.4.1
         with:
           metrics-file: metrics.json
           baseline-metrics: main
@@ -74,7 +74,7 @@ policy:
 For more rigorous detection than thresholds, add paired `observations` vectors and choose a statistical method:
 
 ```yaml
-      - uses: ml-ci-labs/ml-ci-action@v0.4.0
+      - uses: ml-ci-labs/ml-ci-action@v0.4.1
         with:
           metrics-file: metrics.json
           baseline-metrics: main

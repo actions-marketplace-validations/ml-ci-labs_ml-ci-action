@@ -63,7 +63,7 @@ Explicit remote override example:
 
 ```yaml
       - name: Compare against a release baseline artifact
-        uses: ml-ci-labs/ml-ci-action@v0.4.0
+        uses: ml-ci-labs/ml-ci-action@v0.4.1
         with:
           metrics-file: metrics.json
           baseline-ref: release/2026-03-15
@@ -95,7 +95,7 @@ Then choose a method:
 
 ```yaml
       - name: Wilcoxon signed-rank test
-        uses: ml-ci-labs/ml-ci-action@v0.4.0
+        uses: ml-ci-labs/ml-ci-action@v0.4.1
         with:
           metrics-file: metrics.json
           baseline-metrics: main
@@ -105,7 +105,7 @@ Then choose a method:
 
 ```yaml
       - name: Bootstrap confidence intervals
-        uses: ml-ci-labs/ml-ci-action@v0.4.0
+        uses: ml-ci-labs/ml-ci-action@v0.4.1
         with:
           metrics-file: metrics.json
           baseline-metrics: main
@@ -249,7 +249,7 @@ Example artifact-only workflow:
 ```yaml
       - name: Run ML-CI and emit artifacts
         id: ml_ci
-        uses: ml-ci-labs/ml-ci-action@v0.4.0
+        uses: ml-ci-labs/ml-ci-action@v0.4.1
         with:
           metrics-file: metrics.json
           report-mode: artifact

@@ -16,7 +16,7 @@ future ML-CI App. The upload contract is separate from `report-json`.
   "schema_version": 1,
   "source": {
     "provider": "github-actions",
-    "action_version": "0.4.0",
+    "action_version": "0.4.1",
     "generated_at": "2026-03-29T18:42:00+00:00"
   },
   "repository": {
