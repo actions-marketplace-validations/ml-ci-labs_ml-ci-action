@@ -1,3 +1,5 @@
+![ML-CI](./docs/assets/banner.png)
+
 # ML-CI Action
 
 [![CI](https://img.shields.io/github/actions/workflow/status/ml-ci-labs/ml-ci-action/ci.yml?branch=main&label=CI)](https://github.com/ml-ci-labs/ml-ci-action/actions/workflows/ci.yml)
@@ -7,12 +9,6 @@
 [![Marketplace](https://img.shields.io/badge/Marketplace-ML--CI-blue?logo=github)](https://github.com/marketplace?query=ml-ci-action)
 
 Model validation, data quality checks, and model cards for GitHub pull requests, in one Action, with no external dependencies.
-
-![ML-CI Action banner](./docs/assets/banner.png)
-
-_ML-CI v0.4.0 overview banner._
-
-Built for teams that want ML validation in GitHub, not another platform to manage.
 
 ## What It Does
 
@@ -100,16 +96,6 @@ For more rigorous detection than thresholds, add paired `observations` vectors a
 | `bootstrap` | Cross-validation, want confidence bounds | Entire CI falls on the wrong side of zero |
 
 Both statistical methods require paired `observations` vectors in the metrics JSON. See [full reference](./docs/reference.md) for the schema.
-
-## Optional App Upload
-
-If you have an ML-CI App installation token, the action can optionally:
-
-- detect whether that token can reach the current repo
-- set the `app-connected` output
-- POST a versioned run payload to `upload-url`
-
-If the upload is unreachable or misconfigured, validation still completes normally and the upload outcome is recorded only in `report-json` / `.ml-ci/validation-report.json`.
 
 ## Examples
 
