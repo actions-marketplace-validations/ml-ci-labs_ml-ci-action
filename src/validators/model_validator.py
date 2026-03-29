@@ -33,7 +33,7 @@ def validate_model(
     Args:
         current: Current model metrics from the PR.
         baseline: Baseline model metrics (e.g., from main branch).
-        regression_method: Detection method ("threshold" for v0.1).
+        regression_method: Detection method ("threshold" for v0.1.1).
         tolerance: Maximum allowed degradation fraction.
         higher_is_better: Optional direction overrides per metric.
 

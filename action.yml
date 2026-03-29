@@ -27,7 +27,7 @@ inputs:
     required: false
     default: '0.1'
   regression-test:
-    description: 'Regression detection method: threshold (v0.1), wilcoxon or bootstrap (v0.2)'
+    description: 'Regression detection method: threshold (supported in v0.1.1); wilcoxon and bootstrap are not yet implemented'
     required: false
     default: 'threshold'
   regression-tolerance:

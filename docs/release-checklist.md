@@ -20,6 +20,6 @@
 
 1. Merge the tested branch to `main`.
 2. Confirm `main` is green in GitHub Actions.
-3. Tag the merge commit as `v0.1.0`.
+3. Tag the merge commit as the current release version (currently `v0.1.1`).
 4. Publish the action on GitHub Marketplace.
 5. Post using the drafts in `docs/launch-copy.md`.

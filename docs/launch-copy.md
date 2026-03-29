@@ -12,7 +12,7 @@ I built an open-source GitHub Action for ML validation in pull requests.
 
 It compares model metrics against a baseline, checks tabular data quality, generates a model card, and posts a PR report with a single `uses:` step. It does not require a hosted ML platform, external server, or experiment-tracking account.
 
-The current v0.1 scope is intentionally narrow:
+The current v0.1.1 scope is intentionally narrow:
 
 - threshold-based regression gating
 - CSV/Parquet data checks
@@ -36,7 +36,7 @@ It does four things in PRs:
 
 No external service is required. You just give it a metrics JSON file and optional data path.
 
-Current scope is deliberately v0.1:
+Current scope is deliberately v0.1.1:
 
 - threshold-only regression detection
 - CSV/Parquet data validation
@@ -66,7 +66,7 @@ Those tools are stronger as full platforms. ML-CI is for teams that want GitHub-
 
 ### Why threshold-only?
 
-It keeps v0.1 understandable and predictable. Threshold gating solves the most common regression problem today. Statistical tests can come later once the core UX is stable.
+It keeps v0.1.1 understandable and predictable. Threshold gating solves the most common regression problem today. Statistical tests can come later once the core UX is stable.
 
 ### Why a Docker action?
 
