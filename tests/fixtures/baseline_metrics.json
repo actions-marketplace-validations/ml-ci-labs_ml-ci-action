@@ -1,0 +1,23 @@
+{
+  "model_name": "test-classifier-v1",
+  "framework": "pytorch",
+  "timestamp": "2026-03-20T10:00:00Z",
+  "metrics": {
+    "accuracy": 0.9300,
+    "f1_score": 0.9100,
+    "loss": 0.1800,
+    "precision": 0.9250,
+    "recall": 0.8950
+  },
+  "dataset": {
+    "name": "test-dataset",
+    "version": "1.0",
+    "num_samples": 8000
+  },
+  "hyperparameters": {
+    "learning_rate": 0.001,
+    "batch_size": 64,
+    "epochs": 20,
+    "optimizer": "adam"
+  }
+}

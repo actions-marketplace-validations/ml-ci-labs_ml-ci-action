@@ -1,0 +1,48 @@
+name: scikit-learn Regression Example
+
+on:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Simulate evaluation artifacts
+        run: |
+          cat > metrics.json <<'EOF'
+          {
+            "model_name": "house-price-regressor-v4",
+            "framework": "sklearn",
+            "metrics": {
+              "r2": 0.821,
+              "rmse": 18450.2,
+              "mae": 12110.7
+            },
+            "dataset": {
+              "name": "housing-dev-sample",
+              "version": "2026.03",
+              "num_samples": 12000
+            }
+          }
+          EOF
+
+          cat > train.csv <<'EOF'
+          bedrooms,bathrooms,sqft,price
+          2,1,900,250000
+          3,2,1400,395000
+          4,3,2100,615000
+          3,2,1350,382000
+          EOF
+
+      - name: Validate metrics and tabular data
+        uses: ml-ci/ml-ci-action@v0.1.0
+        with:
+          metrics-file: metrics.json
+          baseline-metrics: main
+          data-path: train.csv
+          regression-test: threshold
+          regression-tolerance: "0.03"
+          comment-on-pr: "true"
+          github-token: ${{ github.token }}

@@ -1,0 +1,14 @@
+<svg width="1280" height="500" viewBox="0 0 1280 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="500" fill="#0D1117"/>
+  <rect x="80" y="72" width="1120" height="356" rx="20" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+  <text x="120" y="136" fill="#F85149" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700">Regression detected</text>
+  <text x="120" y="176" fill="#8B949E" font-family="Arial, Helvetica, sans-serif" font-size="20">Expected-failure self-test proving the action exits non-zero when quality gates trip.</text>
+
+  <rect x="120" y="216" width="1040" height="64" rx="12" fill="#0D1117" stroke="#30363D"/>
+  <text x="150" y="256" fill="#F0F6FC" font-family="Arial, Helvetica, sans-serif" font-size="20">regression-expected-failure</text>
+  <text x="908" y="256" fill="#F85149" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">FAILED AS EXPECTED</text>
+
+  <rect x="120" y="298" width="1040" height="64" rx="12" fill="#0D1117" stroke="#30363D"/>
+  <text x="150" y="338" fill="#F0F6FC" font-family="Arial, Helvetica, sans-serif" font-size="20">data-quality-expected-failure</text>
+  <text x="905" y="338" fill="#F85149" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">FAILED AS EXPECTED</text>
+</svg>

@@ -1,0 +1,49 @@
+name: PyTorch Classification Example
+
+on:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Simulate training output
+        run: |
+          cat > metrics.json <<'EOF'
+          {
+            "model_name": "image-classifier-v2",
+            "framework": "pytorch",
+            "metrics": {
+              "accuracy": 0.943,
+              "f1": 0.891,
+              "loss": 0.153
+            },
+            "dataset": {
+              "name": "images-dev-sample",
+              "version": "2026.03",
+              "num_samples": 5000
+            },
+            "hyperparameters": {
+              "epochs": 5,
+              "batch_size": 32,
+              "learning_rate": 0.0005
+            }
+          }
+          EOF
+
+      - name: Validate the model change
+        uses: ml-ci/ml-ci-action@v0.1.0
+        with:
+          metrics-file: metrics.json
+          baseline-metrics: main
+          regression-test: threshold
+          regression-tolerance: "0.02"
+          model-card: "true"
+          comment-on-pr: "true"
+          github-token: ${{ github.token }}

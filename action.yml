@@ -1,0 +1,70 @@
+name: 'ML CI - Model Validation'
+description: 'ML CI/CD without platform lock-in: compare model metrics, check tabular data quality, generate model cards, and report in pull requests'
+author: 'ml-ci'
+
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+
+inputs:
+  metrics-file:
+    description: 'Path to JSON file containing current model metrics'
+    required: true
+  baseline-metrics:
+    description: 'Path to baseline metrics JSON, or "main"/"master" to fetch from that branch'
+    required: false
+    default: ''
+  data-path:
+    description: 'Path to training/validation data (CSV or Parquet) for quality checks'
+    required: false
+    default: ''
+  baseline-data-path:
+    description: 'Path to baseline data for drift detection'
+    required: false
+    default: ''
+  drift-threshold:
+    description: 'Maximum PSI score before flagging distribution drift (0.0-1.0)'
+    required: false
+    default: '0.1'
+  regression-test:
+    description: 'Regression detection method: threshold (v0.1), wilcoxon or bootstrap (v0.2)'
+    required: false
+    default: 'threshold'
+  regression-tolerance:
+    description: 'Maximum allowed metric degradation as a decimal (e.g., 0.02 = 2% drop)'
+    required: false
+    default: '0.02'
+  model-card:
+    description: 'Generate a model card (true/false)'
+    required: false
+    default: 'false'
+  fail-on-regression:
+    description: 'Fail the action step if regression or data quality failure is detected (true/false)'
+    required: false
+    default: 'true'
+  comment-on-pr:
+    description: 'Post validation results as a PR comment (true/false)'
+    required: false
+    default: 'true'
+  framework:
+    description: 'ML framework hint: auto, pytorch, sklearn, tensorflow, huggingface'
+    required: false
+    default: 'auto'
+  github-token:
+    description: 'GitHub token for API access (PR comments, baseline fetching). Defaults to the automatic token.'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  validation-passed:
+    description: 'Whether all validation checks passed (true/false)'
+  regression-detected:
+    description: 'Whether a model performance regression was detected (true/false)'
+  model-card-path:
+    description: 'Path to the generated model card file (empty if not generated)'
+  report-json:
+    description: 'Full validation report as a JSON string'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'

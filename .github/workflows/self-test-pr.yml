@@ -1,0 +1,112 @@
+name: Self Test PR
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  current-only-pass:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ML-CI without a baseline
+        uses: ./
+        with:
+          metrics-file: tests/fixtures/current_metrics.json
+          comment-on-pr: "false"
+          fail-on-regression: "true"
+          github-token: ${{ github.token }}
+
+  remote-main-baseline-fallback-pass:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ML-CI with a remote main baseline fetch
+        uses: ./
+        with:
+          metrics-file: tests/fixtures/current_metrics.json
+          baseline-metrics: main
+          comment-on-pr: "false"
+          fail-on-regression: "true"
+          github-token: ${{ github.token }}
+
+  pr-comment-pass:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ML-CI against passing fixtures and comment on the PR
+        uses: ./
+        with:
+          metrics-file: tests/fixtures/current_metrics.json
+          baseline-metrics: tests/fixtures/baseline_metrics.json
+          data-path: tests/fixtures/sample_data.csv
+          baseline-data-path: tests/fixtures/sample_baseline_data.csv
+          regression-test: threshold
+          regression-tolerance: "0.02"
+          model-card: "true"
+          comment-on-pr: "true"
+          fail-on-regression: "true"
+          github-token: ${{ github.token }}
+
+  regression-expected-failure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ML-CI against a regressed model
+        id: regression_check
+        continue-on-error: true
+        uses: ./
+        with:
+          metrics-file: tests/fixtures/regressed_metrics.json
+          baseline-metrics: tests/fixtures/baseline_metrics.json
+          comment-on-pr: "false"
+          fail-on-regression: "true"
+          github-token: ${{ github.token }}
+
+      - name: Assert that regression detection failed the step
+        if: always()
+        run: |
+          if [ "${{ steps.regression_check.outcome }}" != "failure" ]; then
+            echo "Expected regression_check to fail but got '${{ steps.regression_check.outcome }}'"
+            exit 1
+          fi
+
+  data-quality-expected-failure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create invalid data fixture
+        run: |
+          cat > bad_data.csv <<'EOF'
+          feature_a,feature_b
+          ,
+          ,
+          ,
+          EOF
+
+      - name: Run ML-CI against invalid data
+        id: data_check
+        continue-on-error: true
+        uses: ./
+        with:
+          metrics-file: tests/fixtures/current_metrics.json
+          data-path: bad_data.csv
+          comment-on-pr: "false"
+          fail-on-regression: "true"
+          github-token: ${{ github.token }}
+
+      - name: Assert that data validation failed the step
+        if: always()
+        run: |
+          if [ "${{ steps.data_check.outcome }}" != "failure" ]; then
+            echo "Expected data_check to fail but got '${{ steps.data_check.outcome }}'"
+            exit 1
+          fi
