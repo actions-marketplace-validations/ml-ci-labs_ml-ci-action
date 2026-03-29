@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from src.reporters.pr_comment import (
     COMMENT_MARKER,
+    PROJECT_URL,
     _build_metrics_table,
     _fmt_delta,
     _fmt_metric,
@@ -66,6 +67,8 @@ class TestGenerateReport:
         assert "f1_score" in report
         assert "loss" in report
         assert "ML-CI" in report
+        assert PROJECT_URL in report
+        assert "github.com/ml-ci/ml-ci-action" not in report
 
     def test_failing_report(self):
         result = _make_model_result(regression=True)

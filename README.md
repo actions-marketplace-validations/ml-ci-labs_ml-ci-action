@@ -41,7 +41,7 @@ jobs:
         run: python train.py --save-metrics metrics.json
 
       - name: Validate model changes
-        uses: ml-ci/ml-ci-action@v0.1.0
+        uses: ml-ci-labs/ml-ci-action@v0.1.0
         with:
           metrics-file: metrics.json
           comment-on-pr: "true"
@@ -52,7 +52,7 @@ Once the same metrics file exists on `main` or `master`, enable branch compariso
 
 ```yaml
       - name: Validate against the default branch baseline
-        uses: ml-ci/ml-ci-action@v0.1.0
+        uses: ml-ci-labs/ml-ci-action@v0.1.0
         with:
           metrics-file: metrics.json
           baseline-metrics: main
