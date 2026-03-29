@@ -1,5 +1,3 @@
-![ML-CI](./docs/assets/banner.png)
-
 # ML-CI Action
 
 [![CI](https://img.shields.io/github/actions/workflow/status/ml-ci-labs/ml-ci-action/ci.yml?branch=main&label=CI)](https://github.com/ml-ci-labs/ml-ci-action/actions/workflows/ci.yml)
@@ -10,6 +8,8 @@
 
 Model validation, data quality checks, and model cards for GitHub pull requests, in one Action, with no external dependencies.
 
+![Example ML-CI PR comment](./docs/assets/pr-comment-screenshot.png)
+
 ## What It Does
 
 - Catches model regression in PRs. Compares current metrics against `main`, a checked-in artifact, or an explicit remote ref using threshold, Wilcoxon signed-rank, or bootstrap CI tests.
@@ -17,7 +17,6 @@ Model validation, data quality checks, and model cards for GitHub pull requests,
 - Generates model cards automatically from your training output.
 - Reports directly in the pull request with one idempotent PR comment, stable markdown and JSON artifacts, or both.
 - Runs without a server, account, or external platform. Works from a metrics JSON file.
-- Can optionally upload a versioned run payload to the future ML-CI App without changing CI pass/fail behavior.
 
 ## Quick Start
 
