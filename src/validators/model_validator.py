@@ -23,6 +23,8 @@ class ModelValidationResult:
     model_name: str
     framework: str
     summary: str  # human-readable one-liner
+    blocking_regression_count: int = 0
+    warning_regression_count: int = 0
     current_only_metrics: list[str] = field(default_factory=list)
     baseline_only_metrics: list[str] = field(default_factory=list)
 
@@ -33,6 +35,8 @@ def validate_model(
     regression_method: str = "threshold",
     tolerance: float = 0.02,
     higher_is_better: dict[str, bool] | None = None,
+    metric_tolerances: dict[str, float] | None = None,
+    metric_severities: dict[str, str] | None = None,
     alpha: float = 0.05,
     n_bootstrap: int = 10000,
     confidence: float = 0.95,
@@ -45,6 +49,8 @@ def validate_model(
         regression_method: Detection method ("threshold", "wilcoxon", "bootstrap").
         tolerance: Maximum allowed degradation fraction (threshold method).
         higher_is_better: Optional direction overrides per metric.
+        metric_tolerances: Optional per-metric threshold overrides.
+        metric_severities: Optional per-metric severity overrides.
         alpha: Significance level for Wilcoxon test.
         n_bootstrap: Number of bootstrap resamples.
         confidence: Confidence level for bootstrap CI.
@@ -52,7 +58,14 @@ def validate_model(
     Returns:
         ModelValidationResult with comparisons, regression result, and summary.
     """
-    comparisons = compare_metrics(current, baseline, tolerance, higher_is_better)
+    comparisons = compare_metrics(
+        current,
+        baseline,
+        tolerance=tolerance,
+        higher_is_better=higher_is_better,
+        metric_tolerances=metric_tolerances,
+        metric_severities=metric_severities,
+    )
 
     # Build direction dict for statistical tests
     overrides = higher_is_better or {}
@@ -75,6 +88,8 @@ def validate_model(
             "Supported methods: 'threshold', 'wilcoxon', 'bootstrap'."
         )
 
+    _apply_effective_regressions(comparisons, regression_result)
+
     # Identify metrics only in one side
     current_keys = set(current.metrics.keys())
     baseline_keys = set(baseline.metrics.keys())
@@ -84,25 +99,28 @@ def validate_model(
     # Build summary
     n_compared = len(comparisons)
     n_regressed = regression_result.details.get("regressed_count", 0)
+    n_blocking = regression_result.details.get("blocking_regressed_count", 0)
+    n_warning = regression_result.details.get("warning_regressed_count", 0)
 
     if n_compared == 0:
         summary = "No shared metrics between current and baseline — skipped regression detection"
-    elif regression_result.regression_detected:
+    elif n_regressed:
         if regression_method == "threshold":
-            summary = (
-                f"REGRESSION DETECTED: {n_regressed} of {n_compared} metrics "
-                f"degraded beyond {tolerance:.1%} tolerance"
-            )
+            criterion = "degraded beyond configured thresholds"
         elif regression_method == "wilcoxon":
-            summary = (
-                f"REGRESSION DETECTED: {n_regressed} of {n_compared} metrics "
-                f"showed statistically significant degradation (alpha={alpha})"
-            )
+            criterion = f"showed statistically significant degradation (alpha={alpha})"
         else:
+            criterion = f"showed degradation ({confidence:.0%} CI entirely on bad side)"
+
+        if n_blocking and n_warning:
             summary = (
-                f"REGRESSION DETECTED: {n_regressed} of {n_compared} metrics "
-                f"showed degradation ({confidence:.0%} CI entirely on bad side)"
+                f"REGRESSION DETECTED: {n_blocking} blocking and {n_warning} warning "
+                f"metric(s) {criterion}"
             )
+        elif n_blocking:
+            summary = f"REGRESSION DETECTED: {n_blocking} blocking metric(s) {criterion}"
+        else:
+            summary = f"Warnings only: {n_warning} metric(s) {criterion}"
     else:
         n_improved = sum(1 for c in comparisons if c.improved and c.delta != 0)
         n_unchanged = n_compared - n_improved - n_regressed
@@ -124,6 +142,54 @@ def validate_model(
         model_name=current.model_name,
         framework=current.framework,
         summary=summary,
+        blocking_regression_count=n_blocking,
+        warning_regression_count=n_warning,
         current_only_metrics=current_only,
         baseline_only_metrics=baseline_only,
     )
+
+
+def _apply_effective_regressions(
+    comparisons: list[MetricComparison],
+    regression_result: RegressionResult,
+) -> None:
+    """Align per-metric regression state and severity counts."""
+    metric_results = regression_result.details.get("metric_results")
+
+    if metric_results:
+        for comparison in comparisons:
+            comparison.regression = bool(metric_results.get(comparison.name, {}).get("regressed", False))
+
+    regressed_metrics: list[dict[str, object]] = []
+    blocking = 0
+    warning = 0
+
+    for comparison in comparisons:
+        if not comparison.regression:
+            continue
+        if comparison.severity == "warn":
+            warning += 1
+        else:
+            blocking += 1
+
+        entry: dict[str, object] = {
+            "metric": comparison.name,
+            "current": comparison.current,
+            "baseline": comparison.baseline,
+            "delta": comparison.delta,
+            "delta_pct": comparison.delta_pct,
+            "higher_is_better": comparison.higher_is_better,
+            "severity": comparison.severity,
+        }
+        if metric_results and comparison.name in metric_results:
+            metric_results[comparison.name]["severity"] = comparison.severity
+            entry.update(metric_results[comparison.name])
+        else:
+            entry["tolerance"] = comparison.tolerance
+        regressed_metrics.append(entry)
+
+    regression_result.regression_detected = bool(regressed_metrics)
+    regression_result.details["regressed_count"] = len(regressed_metrics)
+    regression_result.details["blocking_regressed_count"] = blocking
+    regression_result.details["warning_regressed_count"] = warning
+    regression_result.details["regressed_metrics"] = regressed_metrics

@@ -37,7 +37,7 @@ jobs:
           EOF
 
       - name: Validate metrics and tabular data against main
-        uses: ml-ci-labs/ml-ci-action@v0.2.3
+        uses: ml-ci-labs/ml-ci-action@v0.3.0
         with:
           metrics-file: metrics.json
           baseline-metrics: main

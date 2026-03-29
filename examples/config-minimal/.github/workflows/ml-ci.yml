@@ -1,0 +1,42 @@
+name: ML-CI Repo Policy Minimal Example
+
+on:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Simulate evaluation artifacts
+        run: |
+          cat > metrics.json <<'EOF'
+          {
+            "model_name": "fraud-detector-v3",
+            "framework": "pytorch",
+            "metrics": {
+              "accuracy": 0.944,
+              "loss": 0.149
+            }
+          }
+          EOF
+
+          cat > baseline.json <<'EOF'
+          {
+            "model_name": "fraud-detector-v2",
+            "framework": "pytorch",
+            "metrics": {
+              "accuracy": 0.939,
+              "loss": 0.151
+            }
+          }
+          EOF
+
+      - name: Validate with repo policy defaults
+        uses: ml-ci-labs/ml-ci-action@v0.3.0
+        with:
+          metrics-file: metrics.json
+          baseline-metrics: baseline.json
+          comment-on-pr: "true"
+          github-token: ${{ github.token }}

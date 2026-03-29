@@ -198,6 +198,34 @@ class TestCompareMetrics:
         assert comps[0].improved is True
         assert comps[0].regression is False
 
+    def test_per_metric_tolerance_override(self):
+        current = MetricsData(model_name="a", metrics={"accuracy": 0.91})
+        baseline = MetricsData(model_name="b", metrics={"accuracy": 0.93})
+
+        comps = compare_metrics(
+            current,
+            baseline,
+            tolerance=0.01,
+            metric_tolerances={"accuracy": 0.05},
+        )
+
+        assert comps[0].tolerance == 0.05
+        assert comps[0].regression is False
+
+    def test_per_metric_severity_override(self):
+        current = MetricsData(model_name="a", metrics={"accuracy": 0.89})
+        baseline = MetricsData(model_name="b", metrics={"accuracy": 0.93})
+
+        comps = compare_metrics(
+            current,
+            baseline,
+            tolerance=0.01,
+            metric_severities={"accuracy": "warn"},
+        )
+
+        assert comps[0].severity == "warn"
+        assert comps[0].regression is True
+
 
 class TestLoadMetricsWithObservations:
     def test_load_file_with_observations(self):

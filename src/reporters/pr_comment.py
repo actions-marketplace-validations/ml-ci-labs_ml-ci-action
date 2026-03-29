@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from src.validators.model_validator import ModelValidationResult
 
 COMMENT_MARKER = "<!-- ml-ci-report -->"
-VERSION = "0.2.3"
+VERSION = "0.3.0"
 PROJECT_URL = "https://github.com/ml-ci-labs/ml-ci-action"
 
 
@@ -37,8 +37,10 @@ def generate_report(
     sections: list[str] = [COMMENT_MARKER, ""]
 
     # Header
-    if model_result and model_result.regression_result.regression_detected:
+    if model_result and model_result.blocking_regression_count > 0:
         sections.append("## :x: ML-CI Validation Report")
+    elif model_result and model_result.warning_regression_count > 0:
+        sections.append("## :warning: ML-CI Validation Report")
     elif data_result and not data_result.overall_passed:
         sections.append("## :warning: ML-CI Validation Report")
     else:
@@ -125,8 +127,10 @@ def _build_metrics_table(comparisons: list[MetricComparison]) -> str:
         pct_str = _fmt_pct(comp.delta_pct, comp.higher_is_better)
 
         # Status emoji
-        if comp.regression:
+        if comp.regression and comp.severity == "fail":
             status = ":x:"
+        elif comp.regression and comp.severity == "warn":
+            status = ":warning:"
         elif comp.improved and comp.delta != 0:
             status = ":white_check_mark:"
         elif comp.delta == 0:
@@ -144,8 +148,14 @@ def _build_metrics_table(comparisons: list[MetricComparison]) -> str:
 def _build_regression_summary(rr: Any) -> str:
     """Build a one-line regression test summary."""
     method = rr.method
+    blocking_count = rr.details.get("blocking_regressed_count", rr.details.get("regressed_count", 0))
+    warning_count = rr.details.get("warning_regressed_count", 0)
     if method == "threshold":
-        label = f"**Regression test**: `threshold` (tolerance: {rr.details.get('tolerance', 0):.1%})"
+        tolerance = rr.details.get("tolerance")
+        if tolerance is None:
+            label = "**Regression test**: `threshold`"
+        else:
+            label = f"**Regression test**: `threshold` (default tolerance: {tolerance:.1%})"
     elif method == "wilcoxon":
         alpha = rr.details.get("alpha", 0.05)
         n = next(
@@ -160,8 +170,15 @@ def _build_regression_summary(rr: Any) -> str:
     else:
         label = f"**Regression test**: `{method}`"
 
-    if rr.regression_detected:
-        result = f"**Result**: :x: {rr.details.get('regressed_count', 0)} metric(s) regressed"
+    if blocking_count > 0 and warning_count > 0:
+        result = (
+            f"**Result**: :x: {blocking_count} blocking metric(s) regressed, "
+            f"{warning_count} warning metric(s) regressed"
+        )
+    elif blocking_count > 0:
+        result = f"**Result**: :x: {blocking_count} blocking metric(s) regressed"
+    elif warning_count > 0:
+        result = f"**Result**: :warning: {warning_count} warning metric(s) regressed"
     else:
         if method == "threshold":
             result = "**Result**: :white_check_mark: All metrics within tolerance"

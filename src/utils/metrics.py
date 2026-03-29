@@ -89,8 +89,10 @@ class MetricComparison:
     delta: float  # current - baseline (raw)
     delta_pct: float  # percentage change
     higher_is_better: bool
-    improved: bool  # True if change is in the good direction
-    regression: bool  # True if degradation exceeds tolerance
+    tolerance: float = 0.02
+    severity: str = "fail"
+    improved: bool = False  # True if change is in the good direction
+    regression: bool = False  # True if degradation exceeds tolerance
 
 
 def load_metrics(path: str) -> MetricsData:
@@ -298,6 +300,8 @@ def compare_metrics(
     baseline: MetricsData,
     tolerance: float = 0.02,
     higher_is_better: dict[str, bool] | None = None,
+    metric_tolerances: dict[str, float] | None = None,
+    metric_severities: dict[str, str] | None = None,
 ) -> list[MetricComparison]:
     """Compare each metric between current and baseline models.
 
@@ -308,11 +312,15 @@ def compare_metrics(
         baseline: Baseline model metrics.
         tolerance: Maximum allowed degradation as a fraction (e.g., 0.02 = 2%).
         higher_is_better: Optional override dict for metric direction.
+        metric_tolerances: Optional override dict for per-metric threshold tolerances.
+        metric_severities: Optional override dict for per-metric severity values.
 
     Returns:
         List of MetricComparison objects, one per shared metric.
     """
     overrides = higher_is_better or {}
+    tolerance_overrides = metric_tolerances or {}
+    severity_overrides = metric_severities or {}
     comparisons: list[MetricComparison] = []
 
     shared_metrics = set(current.metrics.keys()) & set(baseline.metrics.keys())
@@ -328,14 +336,16 @@ def compare_metrics(
             delta_pct = 0.0 if delta == 0 else float("inf")
 
         hib = overrides.get(name, _is_higher_better(name))
+        metric_tolerance = tolerance_overrides.get(name, tolerance)
+        severity = severity_overrides.get(name, "fail")
 
         # Did the metric improve?
         if hib:
             improved = delta >= 0
-            regression = delta_pct < -tolerance
+            regression = delta_pct < -metric_tolerance
         else:
             improved = delta <= 0
-            regression = delta_pct > tolerance
+            regression = delta_pct > metric_tolerance
 
         comparisons.append(
             MetricComparison(
@@ -345,6 +355,8 @@ def compare_metrics(
                 delta=delta,
                 delta_pct=delta_pct,
                 higher_is_better=hib,
+                tolerance=metric_tolerance,
+                severity=severity,
                 improved=improved,
                 regression=regression,
             )

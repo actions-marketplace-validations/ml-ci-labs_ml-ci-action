@@ -12,20 +12,23 @@ import os
 import sys
 
 
+def _input_candidates(name: str) -> list[str]:
+    """Return supported environment variable names for a GitHub Action input."""
+    normalized = name.upper().replace("-", "_").replace(" ", "_")
+    return [
+        f"INPUT_{name.upper()}",
+        f"INPUT_{normalized}",
+    ]
+
+
 def get_input(name: str, required: bool = False, default: str = "") -> str:
     """Read a GitHub Action input from environment.
 
     Docker actions in GitHub can surface inputs with hyphenated names, while
     local shells generally require underscores. Support both forms.
     """
-    normalized = name.upper().replace("-", "_").replace(" ", "_")
-    candidates = [
-        f"INPUT_{name.upper()}",
-        f"INPUT_{normalized}",
-    ]
-
     value = default
-    for env_name in candidates:
+    for env_name in _input_candidates(name):
         if env_name in os.environ:
             value = os.environ[env_name]
             break
@@ -35,6 +38,11 @@ def get_input(name: str, required: bool = False, default: str = "") -> str:
         print(f"::error::Required input '{name}' is not set")
         sys.exit(1)
     return value
+
+
+def has_input(name: str) -> bool:
+    """Return True when the workflow supplied a specific input."""
+    return any(env_name in os.environ for env_name in _input_candidates(name))
 
 
 def set_output(name: str, value: str) -> None:
@@ -110,6 +118,12 @@ def main() -> None:
             print(f"::error::Invalid 'higher-is-better' input: {e}")
             sys.exit(1)
 
+    explicit_regression_test = regression_test if has_input("REGRESSION-TEST") else None
+    explicit_regression_tolerance = (
+        regression_tolerance if has_input("REGRESSION-TOLERANCE") else None
+    )
+    explicit_higher_is_better = higher_is_better if has_input("HIGHER-IS-BETTER") else {}
+
     # --- Import modules (after input validation to fail fast) ---
     from src.reporters.model_card import generate_model_card
     from src.reporters.pr_comment import (
@@ -123,8 +137,48 @@ def main() -> None:
         load_metrics,
         load_metrics_from_github,
     )
+    from src.utils.policy import (
+        PolicyConfigError,
+        WorkflowPolicyOverrides,
+        discover_policy_file,
+        load_policy_config,
+        resolve_policy,
+    )
     from src.validators.data_validator import validate_data
     from src.validators.model_validator import validate_model
+
+    workspace = os.environ.get("GITHUB_WORKSPACE", ".")
+    config = None
+    policy_path = discover_policy_file(workspace)
+    if policy_path is not None:
+        try:
+            config = load_policy_config(policy_path)
+            print(f"::notice::Loaded repo policy from {policy_path}")
+        except PolicyConfigError as e:
+            print(f"::error::{e}")
+            emit_outputs(
+                validation_passed=False,
+                regression_detected=False,
+                report_data={
+                    "validation_passed": False,
+                    "regression_detected": False,
+                    "error": str(e),
+                },
+            )
+            sys.exit(1)
+
+    policy = resolve_policy(
+        config=config,
+        overrides=WorkflowPolicyOverrides(
+            regression_test=explicit_regression_test,
+            regression_tolerance=explicit_regression_tolerance,
+            higher_is_better=explicit_higher_is_better or {},
+        ),
+    )
+    print(
+        "::notice::Effective regression policy: "
+        f"test={policy.regression_test}, tolerance={policy.regression_tolerance:.1%}"
+    )
 
     # --- Load current metrics ---
     metrics_path = resolve_path(metrics_file)
@@ -199,9 +253,11 @@ def main() -> None:
             model_result = validate_model(
                 current=current,
                 baseline=baseline,
-                regression_method=regression_test,
-                tolerance=regression_tolerance,
-                higher_is_better=higher_is_better,
+                regression_method=policy.regression_test,
+                tolerance=policy.regression_tolerance,
+                higher_is_better=policy.higher_is_better,
+                metric_tolerances=policy.metric_tolerances,
+                metric_severities=policy.metric_severities,
                 alpha=alpha,
                 n_bootstrap=n_bootstrap,
                 confidence=confidence,
@@ -278,15 +334,17 @@ def main() -> None:
             print("::notice::Not running in a PR context — skipping comment")
 
     # --- Set outputs ---
-    regression_detected = (
-        model_result is not None and model_result.regression_result.regression_detected
+    regression_detected = model_result is not None and model_result.regression_result.regression_detected
+    blocking_regression_detected = (
+        model_result is not None and model_result.blocking_regression_count > 0
     )
     data_passed = data_result is None or data_result.overall_passed
-    validation_passed = not regression_detected and data_passed
+    validation_passed = not blocking_regression_detected and data_passed
 
     report_data = {
         "validation_passed": validation_passed,
         "regression_detected": regression_detected,
+        "blocking_regression_detected": blocking_regression_detected,
         "model_name": current.model_name,
         "framework": current.framework,
         "current_metrics": current.metrics,
@@ -301,12 +359,15 @@ def main() -> None:
                 "delta_pct": c.delta_pct,
                 "improved": c.improved,
                 "regression": c.regression,
+                "severity": c.severity,
+                "tolerance": c.tolerance,
             }
             for c in model_result.comparisons
         ]
         report_data["regression_test"] = {
             "method": model_result.regression_result.method,
             "detected": model_result.regression_result.regression_detected,
+            "blocking_detected": blocking_regression_detected,
             "details": model_result.regression_result.details,
         }
     emit_outputs(
@@ -317,7 +378,7 @@ def main() -> None:
     )
 
     # --- Exit with failure if regression detected ---
-    if fail_on_regression and regression_detected:
+    if fail_on_regression and blocking_regression_detected:
         print("::error::Model regression detected — failing CI")
         sys.exit(1)
 

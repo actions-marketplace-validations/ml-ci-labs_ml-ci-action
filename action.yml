@@ -29,11 +29,9 @@ inputs:
   regression-test:
     description: 'Regression detection method: threshold, wilcoxon, or bootstrap'
     required: false
-    default: 'threshold'
   regression-tolerance:
     description: 'Maximum allowed metric degradation as a decimal (e.g., 0.02 = 2% drop)'
     required: false
-    default: '0.02'
   model-card:
     description: 'Generate a model card (true/false)'
     required: false
@@ -61,7 +59,6 @@ inputs:
   higher-is-better:
     description: 'JSON object mapping metric names to direction (true=higher is better). Overrides automatic inference.'
     required: false
-    default: ''
   framework:
     description: 'ML framework hint used only when the metrics file omits framework metadata or reports unknown'
     required: false
@@ -83,4 +80,4 @@ outputs:
 
 runs:
   using: 'docker'
-  image: 'docker://ghcr.io/ml-ci-labs/ml-ci-action:v0.2'
+  image: 'docker://ghcr.io/ml-ci-labs/ml-ci-action:v0.3'

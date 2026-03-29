@@ -146,6 +146,153 @@ def test_framework_input_does_not_override_metrics_framework(
     assert report["framework"] == "pytorch"
 
 
+def test_repo_policy_file_is_auto_discovered(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+    baseline_path = tmp_path / "baseline.json"
+    _write_metrics_file(baseline_path)
+    (tmp_path / ".ml-ci.yml").write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "policy:",
+                "  regression_test: threshold",
+                "  regression_tolerance: 0.01",
+                "  metrics:",
+                "    accuracy:",
+                "      tolerance: 0.10",
+                "      direction: higher",
+                "      severity: warn",
+            ]
+        )
+    )
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_BASELINE_METRICS", "baseline.json")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "true"
+    report = json.loads(outputs["report-json"])
+    assert report["regression_test"]["method"] == "threshold"
+    assert report["comparisons"][0]["severity"] == "warn" or any(
+        item["severity"] == "warn" for item in report["comparisons"]
+    )
+
+
+def test_workflow_inputs_override_repo_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    current_path = tmp_path / "current.json"
+    _write_metrics_with_observations(
+        current_path,
+        accuracy_obs=[0.95, 0.96, 0.94, 0.95, 0.96],
+        loss_obs=[0.15, 0.14, 0.16, 0.15, 0.14],
+    )
+    baseline_path = tmp_path / "baseline.json"
+    _write_metrics_with_observations(
+        baseline_path,
+        accuracy_obs=[0.93, 0.94, 0.92, 0.93, 0.94],
+        loss_obs=[0.18, 0.17, 0.19, 0.18, 0.17],
+    )
+    (tmp_path / ".ml-ci.yml").write_text(
+        "version: 1\npolicy:\n  regression_test: threshold\n  regression_tolerance: 0.01\n",
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "current.json")
+    monkeypatch.setenv("INPUT_BASELINE_METRICS", "baseline.json")
+    monkeypatch.setenv("INPUT_REGRESSION_TEST", "wilcoxon")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    report = json.loads(outputs["report-json"])
+    assert report["regression_test"]["method"] == "wilcoxon"
+
+
+def test_invalid_repo_policy_fails_with_actionable_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+    (tmp_path / ".ml-ci.yml").write_text(
+        "version: 1\npolicy:\n  metrics:\n    accuracy:\n      severity: info\n",
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    with pytest.raises(SystemExit) as exc_info:
+        main_module.main()
+
+    assert exc_info.value.code == 1
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "false"
+    assert "severity" in outputs["report-json"]
+
+
+def test_warn_only_regression_sets_non_blocking_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    current_path = tmp_path / "current.json"
+    _write_metrics_file(current_path)
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "model_name": "demo-model",
+                "framework": "pytorch",
+                "metrics": {"accuracy": 0.97, "loss": 0.12},
+            }
+        )
+    )
+    (tmp_path / ".ml-ci.yml").write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "policy:",
+                "  regression_tolerance: 0.01",
+                "  metrics:",
+                "    accuracy:",
+                "      severity: warn",
+                "      direction: higher",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "current.json")
+    monkeypatch.setenv("INPUT_BASELINE_METRICS", "baseline.json")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "true"
+    assert outputs["regression-detected"] == "true"
+    report = json.loads(outputs["report-json"])
+    assert report["blocking_regression_detected"] is False
+
+
 def test_model_card_generation_failure_degrades_gracefully(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

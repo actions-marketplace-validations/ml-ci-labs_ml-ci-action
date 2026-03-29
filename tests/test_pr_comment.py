@@ -323,4 +323,4 @@ class TestStatisticalReportRendering:
         summary = _build_regression_summary(rr)
         assert "bootstrap" in summary
         assert "95%" in summary
-        assert "1 metric(s) regressed" in summary
+        assert "1 blocking metric(s) regressed" in summary

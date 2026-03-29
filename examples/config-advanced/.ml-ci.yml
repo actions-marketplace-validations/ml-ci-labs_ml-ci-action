@@ -1,0 +1,19 @@
+version: 1
+policy:
+  regression_test: bootstrap
+  regression_tolerance: 0.03
+  higher_is_better:
+    custom_cost: false
+  metrics:
+    ndcg:
+      tolerance: 0.01
+      direction: higher
+      severity: fail
+    loss:
+      tolerance: 0.05
+      direction: lower
+      severity: warn
+    custom_cost:
+      tolerance: 0.02
+      direction: lower
+      severity: warn

@@ -162,3 +162,78 @@ class TestValidateModel:
         )
         with pytest.raises(ValueError, match="Unknown regression method"):
             validate_model(current, self.baseline, regression_method="invalid")
+
+    def test_per_metric_tolerance_override(self):
+        current = MetricsData(
+            model_name="v2",
+            framework="pytorch",
+            metrics={"accuracy": 0.91, "f1_score": 0.91, "loss": 0.18},
+        )
+
+        result = validate_model(
+            current,
+            self.baseline,
+            tolerance=0.01,
+            metric_tolerances={"accuracy": 0.05},
+        )
+
+        assert not any(c.name == "accuracy" and c.regression for c in result.comparisons)
+
+    def test_per_metric_direction_override(self):
+        baseline = MetricsData(
+            model_name="v1",
+            framework="pytorch",
+            metrics={"custom_metric": 0.6},
+        )
+        current = MetricsData(
+            model_name="v2",
+            framework="pytorch",
+            metrics={"custom_metric": 0.5},
+        )
+
+        result = validate_model(
+            current,
+            baseline,
+            tolerance=0.01,
+            higher_is_better={"custom_metric": False},
+        )
+
+        assert result.comparisons[0].improved is True
+        assert result.regression_result.regression_detected is False
+
+    def test_warn_severity_does_not_create_blocking_failure(self):
+        current = MetricsData(
+            model_name="v2",
+            framework="pytorch",
+            metrics={"accuracy": 0.89, "f1_score": 0.91, "loss": 0.18},
+        )
+
+        result = validate_model(
+            current,
+            self.baseline,
+            tolerance=0.01,
+            metric_severities={"accuracy": "warn"},
+        )
+
+        assert result.regression_result.regression_detected is True
+        assert result.blocking_regression_count == 0
+        assert result.warning_regression_count == 1
+        assert "Warnings only" in result.summary
+
+    def test_mixed_fail_and_warn_regressions(self):
+        current = MetricsData(
+            model_name="v2",
+            framework="pytorch",
+            metrics={"accuracy": 0.89, "f1_score": 0.85, "loss": 0.18},
+        )
+
+        result = validate_model(
+            current,
+            self.baseline,
+            tolerance=0.01,
+            metric_severities={"accuracy": "warn", "f1_score": "fail"},
+        )
+
+        assert result.regression_result.regression_detected is True
+        assert result.blocking_regression_count == 1
+        assert result.warning_regression_count == 1

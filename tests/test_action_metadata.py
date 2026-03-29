@@ -26,7 +26,7 @@ def _project_version() -> str:
 def test_action_uses_moving_minor_image_tag() -> None:
     action = yaml.safe_load(ACTION_PATH.read_text(encoding="utf-8"))
     assert action["runs"]["using"] == "docker"
-    assert action["runs"]["image"] == "docker://ghcr.io/ml-ci-labs/ml-ci-action:v0.2"
+    assert action["runs"]["image"] == "docker://ghcr.io/ml-ci-labs/ml-ci-action:v0.3"
 
 
 def test_release_facing_versions_are_consistent() -> None:

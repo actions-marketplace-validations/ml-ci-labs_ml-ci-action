@@ -1,0 +1,37 @@
+name: ML-CI Repo Policy Advanced Example
+
+on:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Simulate cross-validation artifacts
+        run: |
+          cat > metrics.json <<'EOF'
+          {
+            "model_name": "ranking-model-v5",
+            "framework": "pytorch",
+            "metrics": {
+              "ndcg": 0.821,
+              "loss": 0.214,
+              "custom_cost": 0.09
+            },
+            "observations": {
+              "ndcg": [0.82, 0.83, 0.81, 0.82, 0.83],
+              "loss": [0.21, 0.22, 0.20, 0.21, 0.23],
+              "custom_cost": [0.09, 0.10, 0.09, 0.08, 0.09]
+            }
+          }
+          EOF
+
+      - name: Validate with advanced repo policy defaults
+        uses: ml-ci-labs/ml-ci-action@v0.3.0
+        with:
+          metrics-file: metrics.json
+          baseline-metrics: main
+          comment-on-pr: "true"
+          github-token: ${{ github.token }}

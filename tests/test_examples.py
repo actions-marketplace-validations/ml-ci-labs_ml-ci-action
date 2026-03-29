@@ -15,6 +15,8 @@ EXAMPLE_WORKFLOWS = {
     "first_run": REPO_ROOT / "examples/pytorch-classification/.github/workflows/ml-ci.yml",
     "branch_baseline": REPO_ROOT / "examples/sklearn-regression/.github/workflows/ml-ci.yml",
     "cross_validation": REPO_ROOT / "examples/cross-validation/.github/workflows/ml-ci.yml",
+    "config_minimal": REPO_ROOT / "examples/config-minimal/.github/workflows/ml-ci.yml",
+    "config_advanced": REPO_ROOT / "examples/config-advanced/.github/workflows/ml-ci.yml",
 }
 
 
@@ -69,3 +71,21 @@ def test_cross_validation_example_uses_statistical_regression() -> None:
     assert step["with"]["baseline-metrics"] == "main"
     assert step["with"]["regression-test"] == "wilcoxon"
     assert step["with"]["alpha"] == "0.05"
+
+
+def test_config_minimal_example_relies_on_repo_policy_file() -> None:
+    workflow = _load_yaml(EXAMPLE_WORKFLOWS["config_minimal"])
+    step = workflow["jobs"]["validate"]["steps"][-1]
+    assert step["uses"] == _expected_action_ref()
+    assert "regression-test" not in step["with"]
+    assert "regression-tolerance" not in step["with"]
+    assert (EXAMPLE_WORKFLOWS["config_minimal"].parents[2] / ".ml-ci.yml").exists()
+
+
+def test_config_advanced_example_relies_on_repo_policy_file() -> None:
+    workflow = _load_yaml(EXAMPLE_WORKFLOWS["config_advanced"])
+    step = workflow["jobs"]["validate"]["steps"][-1]
+    assert step["uses"] == _expected_action_ref()
+    assert step["with"]["baseline-metrics"] == "main"
+    assert "higher-is-better" not in step["with"]
+    assert (EXAMPLE_WORKFLOWS["config_advanced"].parents[2] / ".ml-ci.yml").exists()
