@@ -30,10 +30,11 @@ def get_input(name: str, required: bool = False, default: str = "") -> str:
     value = default
     for env_name in _input_candidates(name):
         if env_name in os.environ:
-            value = os.environ[env_name]
-            break
+            candidate = os.environ[env_name].strip()
+            if candidate:
+                value = candidate
+                break
 
-    value = value.strip()
     if required and not value:
         print(f"::error::Required input '{name}' is not set")
         sys.exit(1)

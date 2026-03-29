@@ -599,6 +599,25 @@ def test_empty_report_mode_falls_back_to_legacy_toggle(
     assert outputs["report-json-path"] == ""
 
 
+def test_empty_numeric_inputs_fall_back_to_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_metrics_file(metrics_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_REGRESSION_TOLERANCE", "")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "true"
+
+
 def test_explicit_remote_baseline_defaults_to_metrics_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
