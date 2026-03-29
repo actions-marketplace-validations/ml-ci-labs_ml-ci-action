@@ -54,6 +54,23 @@ jobs:
           fail-on-regression: "true"
           github-token: ${{ github.token }}
 
+  wilcoxon-pass:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ML-CI with Wilcoxon signed-rank test
+        uses: ./
+        with:
+          metrics-file: tests/fixtures/current_metrics_with_observations.json
+          baseline-metrics: tests/fixtures/baseline_metrics_with_observations.json
+          regression-test: wilcoxon
+          alpha: "0.05"
+          model-card: "true"
+          comment-on-pr: "false"
+          fail-on-regression: "true"
+          github-token: ${{ github.token }}
+
   regression-expected-failure:
     runs-on: ubuntu-latest
     steps:
