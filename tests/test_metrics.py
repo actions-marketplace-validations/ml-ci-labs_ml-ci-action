@@ -14,6 +14,7 @@ from src.utils.metrics import (
     compare_metrics,
     load_metrics,
     load_metrics_from_github,
+    validate_paired_observations,
 )
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -196,3 +197,119 @@ class TestCompareMetrics:
         comps = compare_metrics(current, baseline, tolerance=0.01, higher_is_better={"custom": False})
         assert comps[0].improved is True
         assert comps[0].regression is False
+
+
+class TestLoadMetricsWithObservations:
+    def test_load_file_with_observations(self):
+        path = os.path.join(FIXTURES_DIR, "current_metrics_with_observations.json")
+        data = load_metrics(path)
+        assert "accuracy" in data.observations
+        assert len(data.observations["accuracy"]) == 5
+        assert all(isinstance(v, (int, float)) for v in data.observations["accuracy"])
+
+    def test_load_file_without_observations(self):
+        path = os.path.join(FIXTURES_DIR, "current_metrics.json")
+        data = load_metrics(path)
+        assert data.observations == {}
+
+    def test_observations_non_numeric_rejected(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({
+                "metrics": {"accuracy": 0.9},
+                "observations": {"accuracy": [0.9, "bad", 0.8]},
+            }, f)
+            f.flush()
+            with pytest.raises(ValueError, match="numeric"):
+                load_metrics(f.name)
+        os.unlink(f.name)
+
+    def test_observations_non_list_rejected(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({
+                "metrics": {"accuracy": 0.9},
+                "observations": {"accuracy": 0.9},
+            }, f)
+            f.flush()
+            with pytest.raises(ValueError, match="list"):
+                load_metrics(f.name)
+        os.unlink(f.name)
+
+
+class TestValidatePairedObservations:
+    def test_valid_paired_observations(self):
+        current = MetricsData(
+            model_name="a",
+            metrics={"accuracy": 0.95},
+            observations={"accuracy": [0.94, 0.95, 0.96]},
+        )
+        baseline = MetricsData(
+            model_name="b",
+            metrics={"accuracy": 0.93},
+            observations={"accuracy": [0.92, 0.93, 0.94]},
+        )
+        pairs = validate_paired_observations(current, baseline, ["accuracy"])
+        assert "accuracy" in pairs
+        assert len(pairs["accuracy"][0]) == 3
+        assert len(pairs["accuracy"][1]) == 3
+
+    def test_missing_current_observations_raises(self):
+        current = MetricsData(model_name="a", metrics={"accuracy": 0.95})
+        baseline = MetricsData(
+            model_name="b",
+            metrics={"accuracy": 0.93},
+            observations={"accuracy": [0.92, 0.93, 0.94]},
+        )
+        with pytest.raises(ValueError, match="Current metrics file has no 'observations'"):
+            validate_paired_observations(current, baseline, ["accuracy"])
+
+    def test_missing_baseline_observations_raises(self):
+        current = MetricsData(
+            model_name="a",
+            metrics={"accuracy": 0.95},
+            observations={"accuracy": [0.94, 0.95, 0.96]},
+        )
+        baseline = MetricsData(model_name="b", metrics={"accuracy": 0.93})
+        with pytest.raises(ValueError, match="Baseline metrics file has no 'observations'"):
+            validate_paired_observations(current, baseline, ["accuracy"])
+
+    def test_mismatched_lengths_raises(self):
+        current = MetricsData(
+            model_name="a",
+            metrics={"accuracy": 0.95},
+            observations={"accuracy": [0.94, 0.95, 0.96]},
+        )
+        baseline = MetricsData(
+            model_name="b",
+            metrics={"accuracy": 0.93},
+            observations={"accuracy": [0.92, 0.93]},
+        )
+        with pytest.raises(ValueError, match="mismatch"):
+            validate_paired_observations(current, baseline, ["accuracy"])
+
+    def test_missing_metric_in_observations_raises(self):
+        current = MetricsData(
+            model_name="a",
+            metrics={"accuracy": 0.95, "f1": 0.9},
+            observations={"accuracy": [0.94, 0.95, 0.96]},
+        )
+        baseline = MetricsData(
+            model_name="b",
+            metrics={"accuracy": 0.93, "f1": 0.88},
+            observations={"accuracy": [0.92, 0.93, 0.94], "f1": [0.87, 0.88, 0.89]},
+        )
+        with pytest.raises(ValueError, match="no observations for 'f1'"):
+            validate_paired_observations(current, baseline, ["accuracy", "f1"])
+
+    def test_too_few_observations_raises(self):
+        current = MetricsData(
+            model_name="a",
+            metrics={"accuracy": 0.95},
+            observations={"accuracy": [0.95]},
+        )
+        baseline = MetricsData(
+            model_name="b",
+            metrics={"accuracy": 0.93},
+            observations={"accuracy": [0.93]},
+        )
+        with pytest.raises(ValueError, match="At least 2"):
+            validate_paired_observations(current, baseline, ["accuracy"])

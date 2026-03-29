@@ -9,6 +9,8 @@ from src.reporters.pr_comment import (
     COMMENT_MARKER,
     PROJECT_URL,
     _build_metrics_table,
+    _build_regression_summary,
+    _build_statistical_details,
     _fmt_delta,
     _fmt_metric,
     generate_report,
@@ -211,3 +213,114 @@ class TestPostOrUpdateComment:
         mock_requests.patch.assert_called_once()
         # Should NOT create a new comment
         mock_requests.post.assert_not_called()
+
+
+class TestStatisticalReportRendering:
+    def test_wilcoxon_report_contains_p_values(self):
+        rr = RegressionResult(
+            method="wilcoxon",
+            regression_detected=False,
+            details={
+                "alpha": 0.05,
+                "total_metrics": 1,
+                "regressed_count": 0,
+                "regressed_metrics": [],
+                "metric_results": {
+                    "accuracy": {
+                        "p_value": 0.0625,
+                        "statistic": 0.0,
+                        "median_diff": 0.02,
+                        "n_observations": 5,
+                        "significant": False,
+                        "regressed": False,
+                    },
+                },
+            },
+        )
+        details = _build_statistical_details(rr)
+        assert details is not None
+        assert "Wilcoxon" in details
+        assert "p-value" in details
+        assert "0.0625" in details
+        assert "<details>" in details
+
+    def test_bootstrap_report_contains_confidence_interval(self):
+        rr = RegressionResult(
+            method="bootstrap",
+            regression_detected=False,
+            details={
+                "confidence": 0.95,
+                "n_bootstrap": 10000,
+                "total_metrics": 1,
+                "regressed_count": 0,
+                "regressed_metrics": [],
+                "metric_results": {
+                    "accuracy": {
+                        "ci_lower": 0.015,
+                        "ci_upper": 0.025,
+                        "mean_diff": 0.02,
+                        "n_observations": 5,
+                        "n_bootstrap": 10000,
+                        "regressed": False,
+                    },
+                },
+            },
+        )
+        details = _build_statistical_details(rr)
+        assert details is not None
+        assert "Bootstrap" in details
+        assert "CI Lower" in details
+        assert "CI Upper" in details
+        assert "<details>" in details
+
+    def test_threshold_returns_no_statistical_details(self):
+        rr = RegressionResult(
+            method="threshold",
+            regression_detected=False,
+            details={"tolerance": 0.02, "total_metrics": 1, "regressed_count": 0, "regressed_metrics": []},
+        )
+        assert _build_statistical_details(rr) is None
+
+    def test_wilcoxon_summary_shows_alpha(self):
+        rr = RegressionResult(
+            method="wilcoxon",
+            regression_detected=False,
+            details={
+                "alpha": 0.05,
+                "total_metrics": 1,
+                "regressed_count": 0,
+                "regressed_metrics": [],
+                "metric_results": {
+                    "accuracy": {
+                        "p_value": 0.5,
+                        "statistic": 0.0,
+                        "median_diff": 0.0,
+                        "n_observations": 5,
+                        "significant": False,
+                        "regressed": False,
+                    },
+                },
+            },
+        )
+        summary = _build_regression_summary(rr)
+        assert "wilcoxon" in summary
+        assert "alpha" in summary
+        assert "No statistically significant regression" in summary
+
+    def test_bootstrap_summary_shows_confidence(self):
+        rr = RegressionResult(
+            method="bootstrap",
+            regression_detected=True,
+            details={
+                "confidence": 0.95,
+                "n_bootstrap": 10000,
+                "total_metrics": 1,
+                "regressed_count": 1,
+                "regressed_metrics": [{"metric": "accuracy"}],
+                "metric_results": {},
+            },
+        )
+        summary = _build_regression_summary(rr)
+        assert "bootstrap" in summary
+        assert "95%" in summary
+        assert "1 metric(s) regressed" in summary

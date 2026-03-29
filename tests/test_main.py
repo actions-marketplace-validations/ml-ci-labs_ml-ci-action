@@ -23,6 +23,25 @@ def _write_metrics_file(path: Path) -> None:
     )
 
 
+def _write_metrics_with_observations(path: Path, accuracy_obs: list[float], loss_obs: list[float]) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "model_name": "demo-model",
+                "framework": "pytorch",
+                "metrics": {
+                    "accuracy": sum(accuracy_obs) / len(accuracy_obs),
+                    "loss": sum(loss_obs) / len(loss_obs),
+                },
+                "observations": {
+                    "accuracy": accuracy_obs,
+                    "loss": loss_obs,
+                },
+            }
+        )
+    )
+
+
 def _set_common_env(monkeypatch: pytest.MonkeyPatch, workspace: Path, output_path: Path) -> None:
     monkeypatch.setenv("GITHUB_WORKSPACE", str(workspace))
     monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
@@ -190,3 +209,87 @@ def test_permission_denied_remote_baseline_gracefully_falls_back_to_current_only
     outputs = _parse_outputs(output_path)
     assert outputs["validation-passed"] == "true"
     assert outputs["regression-detected"] == "false"
+
+
+def test_wilcoxon_method_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    current_path = tmp_path / "current.json"
+    _write_metrics_with_observations(
+        current_path,
+        accuracy_obs=[0.95, 0.96, 0.94, 0.95, 0.96],
+        loss_obs=[0.15, 0.14, 0.16, 0.15, 0.14],
+    )
+    baseline_path = tmp_path / "baseline.json"
+    _write_metrics_with_observations(
+        baseline_path,
+        accuracy_obs=[0.93, 0.94, 0.92, 0.93, 0.94],
+        loss_obs=[0.18, 0.17, 0.19, 0.18, 0.17],
+    )
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "current.json")
+    monkeypatch.setenv("INPUT_BASELINE_METRICS", "baseline.json")
+    monkeypatch.setenv("INPUT_REGRESSION_TEST", "wilcoxon")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "true"
+    assert outputs["regression-detected"] == "false"
+    report = json.loads(outputs["report-json"])
+    assert report["regression_test"]["method"] == "wilcoxon"
+
+
+def test_bootstrap_method_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    current_path = tmp_path / "current.json"
+    _write_metrics_with_observations(
+        current_path,
+        accuracy_obs=[0.95, 0.96, 0.94, 0.95, 0.96],
+        loss_obs=[0.15, 0.14, 0.16, 0.15, 0.14],
+    )
+    baseline_path = tmp_path / "baseline.json"
+    _write_metrics_with_observations(
+        baseline_path,
+        accuracy_obs=[0.93, 0.94, 0.92, 0.93, 0.94],
+        loss_obs=[0.18, 0.17, 0.19, 0.18, 0.17],
+    )
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "current.json")
+    monkeypatch.setenv("INPUT_BASELINE_METRICS", "baseline.json")
+    monkeypatch.setenv("INPUT_REGRESSION_TEST", "bootstrap")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "true"
+    assert outputs["regression-detected"] == "false"
+    report = json.loads(outputs["report-json"])
+    assert report["regression_test"]["method"] == "bootstrap"
+
+
+def test_statistical_method_without_observations_fails_with_clear_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    current_path = tmp_path / "current.json"
+    _write_metrics_file(current_path)
+    baseline_path = tmp_path / "baseline.json"
+    _write_metrics_file(baseline_path)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "current.json")
+    monkeypatch.setenv("INPUT_BASELINE_METRICS", "baseline.json")
+    monkeypatch.setenv("INPUT_REGRESSION_TEST", "wilcoxon")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    with pytest.raises(SystemExit) as exc_info:
+        main_module.main()
+
+    assert exc_info.value.code == 1
+    outputs = _parse_outputs(output_path)
+    assert outputs["validation-passed"] == "false"

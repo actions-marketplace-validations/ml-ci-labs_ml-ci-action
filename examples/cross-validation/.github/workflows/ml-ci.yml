@@ -1,0 +1,67 @@
+# Example: Cross-validation with Wilcoxon signed-rank test
+#
+# This workflow demonstrates statistical regression testing.
+# The training script runs k-fold cross-validation and saves
+# per-fold observations alongside scalar summary metrics.
+
+name: ML Validation (Cross-Validation)
+
+on:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install scikit-learn numpy
+
+      # Your training script should output metrics.json with both
+      # "metrics" (scalar summaries) and "observations" (per-fold values).
+      #
+      # Example output:
+      # {
+      #   "model_name": "my-classifier",
+      #   "framework": "sklearn",
+      #   "metrics": {"accuracy": 0.943, "f1": 0.891},
+      #   "observations": {
+      #     "accuracy": [0.94, 0.95, 0.93, 0.94, 0.96, 0.93, 0.95, 0.94, 0.93, 0.95],
+      #     "f1": [0.88, 0.90, 0.89, 0.88, 0.91, 0.88, 0.90, 0.89, 0.88, 0.90]
+      #   }
+      # }
+      - name: Train with cross-validation
+        run: |
+          python -c "
+          import json, numpy as np
+          from sklearn.datasets import make_classification
+          from sklearn.model_selection import cross_val_score
+          from sklearn.ensemble import RandomForestClassifier
+          X, y = make_classification(n_samples=500, n_features=20, random_state=42)
+          clf = RandomForestClassifier(n_estimators=50, random_state=42)
+          acc_scores = cross_val_score(clf, X, y, cv=10, scoring='accuracy')
+          f1_scores = cross_val_score(clf, X, y, cv=10, scoring='f1')
+          json.dump({
+              'model_name': 'rf-classifier',
+              'framework': 'sklearn',
+              'metrics': {'accuracy': float(np.mean(acc_scores)), 'f1': float(np.mean(f1_scores))},
+              'observations': {'accuracy': acc_scores.tolist(), 'f1': f1_scores.tolist()},
+          }, open('metrics.json', 'w'), indent=2)
+          "
+
+      - name: Validate with Wilcoxon test
+        uses: ml-ci-labs/ml-ci-action@v0.2.0
+        with:
+          metrics-file: metrics.json
+          baseline-metrics: main
+          regression-test: wilcoxon
+          alpha: "0.05"
+          comment-on-pr: "true"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

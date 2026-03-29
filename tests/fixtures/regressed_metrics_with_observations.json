@@ -1,0 +1,14 @@
+{
+  "model_name": "v3-cv-bad",
+  "framework": "pytorch",
+  "metrics": {
+    "accuracy": 0.882,
+    "f1": 0.832,
+    "loss": 0.298
+  },
+  "observations": {
+    "accuracy": [0.88, 0.89, 0.87, 0.88, 0.89],
+    "f1": [0.83, 0.84, 0.82, 0.83, 0.84],
+    "loss": [0.30, 0.29, 0.31, 0.30, 0.29]
+  }
+}

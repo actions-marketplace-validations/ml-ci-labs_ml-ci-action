@@ -1,5 +1,7 @@
 """Tests for src.validators.model_validator."""
 
+import pytest
+
 from src.utils.metrics import MetricsData
 from src.validators.model_validator import validate_model
 
@@ -99,3 +101,64 @@ class TestValidateModel:
         result = validate_model(current, self.baseline, tolerance=0.0)
         # Any decrease at all should be flagged
         assert result.regression_result.regression_detected
+
+    def test_wilcoxon_method_routes_correctly(self):
+        current = MetricsData(
+            model_name="v2",
+            framework="pytorch",
+            metrics={"accuracy": 0.95},
+            observations={"accuracy": [0.95, 0.96, 0.94, 0.95, 0.96]},
+        )
+        baseline = MetricsData(
+            model_name="v1",
+            framework="pytorch",
+            metrics={"accuracy": 0.93},
+            observations={"accuracy": [0.93, 0.94, 0.92, 0.93, 0.94]},
+        )
+        result = validate_model(current, baseline, regression_method="wilcoxon")
+        assert result.regression_result.method == "wilcoxon"
+        assert result.regression_result.regression_detected is False
+
+    def test_bootstrap_method_routes_correctly(self):
+        current = MetricsData(
+            model_name="v2",
+            framework="pytorch",
+            metrics={"accuracy": 0.95},
+            observations={"accuracy": [0.95, 0.96, 0.94, 0.95, 0.96]},
+        )
+        baseline = MetricsData(
+            model_name="v1",
+            framework="pytorch",
+            metrics={"accuracy": 0.93},
+            observations={"accuracy": [0.93, 0.94, 0.92, 0.93, 0.94]},
+        )
+        result = validate_model(current, baseline, regression_method="bootstrap")
+        assert result.regression_result.method == "bootstrap"
+        assert result.regression_result.regression_detected is False
+
+    def test_wilcoxon_requires_observations(self):
+        current = MetricsData(
+            model_name="v2",
+            framework="pytorch",
+            metrics={"accuracy": 0.95},
+        )
+        with pytest.raises(ValueError, match="observations"):
+            validate_model(current, self.baseline, regression_method="wilcoxon")
+
+    def test_bootstrap_requires_observations(self):
+        current = MetricsData(
+            model_name="v2",
+            framework="pytorch",
+            metrics={"accuracy": 0.95},
+        )
+        with pytest.raises(ValueError, match="observations"):
+            validate_model(current, self.baseline, regression_method="bootstrap")
+
+    def test_unknown_method_raises(self):
+        current = MetricsData(
+            model_name="v2",
+            framework="pytorch",
+            metrics={"accuracy": 0.95},
+        )
+        with pytest.raises(ValueError, match="Unknown regression method"):
+            validate_model(current, self.baseline, regression_method="invalid")
