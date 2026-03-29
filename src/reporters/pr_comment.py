@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from src.validators.model_validator import ModelValidationResult
 
 COMMENT_MARKER = "<!-- ml-ci-report -->"
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 PROJECT_URL = "https://github.com/ml-ci-labs/ml-ci-action"
 
 
