@@ -42,7 +42,11 @@ def get_input(name: str, required: bool = False, default: str = "") -> str:
 
 def has_input(name: str) -> bool:
     """Return True when the workflow supplied a specific input."""
-    return any(env_name in os.environ for env_name in _input_candidates(name))
+    for env_name in _input_candidates(name):
+        value = os.environ.get(env_name)
+        if value is not None and value.strip() != "":
+            return True
+    return False
 
 
 def set_output(name: str, value: str) -> None:
