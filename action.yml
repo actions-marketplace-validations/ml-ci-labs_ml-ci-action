@@ -1,10 +1,10 @@
-name: 'ML CI - Model Validation'
-description: 'ML CI/CD without platform lock-in: compare model metrics, check tabular data quality, generate model cards, and report in pull requests'
-author: 'ml-ci'
+name: 'ML-CI: Model Validation'
+description: 'Model validation for GitHub pull requests - regression detection, data quality checks, and model cards in one Action.'
+author: 'ml-ci-labs'
 
 branding:
   icon: 'check-circle'
-  color: 'blue'
+  color: 'green'
 
 inputs:
   metrics-file:
