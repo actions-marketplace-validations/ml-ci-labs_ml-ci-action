@@ -12,15 +12,17 @@ from src import main as main_module
 
 
 def _write_metrics_file(path: Path) -> None:
-    path.write_text(
-        json.dumps(
-            {
-                "model_name": "demo-model",
-                "framework": "pytorch",
-                "metrics": {"accuracy": 0.95, "loss": 0.12},
-            }
-        )
-    )
+    _write_custom_metrics_file(path, framework="pytorch")
+
+
+def _write_custom_metrics_file(path: Path, framework: str | None) -> None:
+    payload = {
+        "model_name": "demo-model",
+        "metrics": {"accuracy": 0.95, "loss": 0.12},
+    }
+    if framework is not None:
+        payload["framework"] = framework
+    path.write_text(json.dumps(payload))
 
 
 def _write_metrics_with_observations(path: Path, accuracy_obs: list[float], loss_obs: list[float]) -> None:
@@ -102,6 +104,46 @@ def test_get_input_accepts_hyphenated_docker_action_env_names(monkeypatch: pytes
     monkeypatch.delenv("INPUT_METRICS_FILE", raising=False)
 
     assert main_module.get_input("METRICS-FILE") == "metrics.json"
+
+
+def test_framework_input_fills_missing_metrics_framework(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_custom_metrics_file(metrics_path, framework=None)
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_FRAMEWORK", "sklearn")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    report = json.loads(outputs["report-json"])
+    assert report["framework"] == "sklearn"
+
+
+def test_framework_input_does_not_override_metrics_framework(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metrics_path = tmp_path / "metrics.json"
+    _write_custom_metrics_file(metrics_path, framework="pytorch")
+
+    output_path = tmp_path / "github_output.txt"
+    _set_common_env(monkeypatch, tmp_path, output_path)
+    monkeypatch.setenv("INPUT_METRICS_FILE", "metrics.json")
+    monkeypatch.setenv("INPUT_FRAMEWORK", "sklearn")
+    monkeypatch.setenv("INPUT_COMMENT_ON_PR", "false")
+
+    main_module.main()
+
+    outputs = _parse_outputs(output_path)
+    report = json.loads(outputs["report-json"])
+    assert report["framework"] == "pytorch"
 
 
 def test_model_card_generation_failure_degrades_gracefully(

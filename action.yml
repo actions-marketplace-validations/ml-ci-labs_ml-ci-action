@@ -63,7 +63,7 @@ inputs:
     required: false
     default: ''
   framework:
-    description: 'ML framework hint: auto, pytorch, sklearn, tensorflow, huggingface'
+    description: 'ML framework hint used only when the metrics file omits framework metadata or reports unknown'
     required: false
     default: 'auto'
   github-token:

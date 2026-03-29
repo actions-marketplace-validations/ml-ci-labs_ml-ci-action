@@ -1,6 +1,6 @@
 [project]
 name = "ml-ci-action"
-version = "0.2.1"
+version = "0.2.3"
 description = "GitHub-native ML validation for pull requests"
 readme = "README.md"
 requires-python = ">=3.11"

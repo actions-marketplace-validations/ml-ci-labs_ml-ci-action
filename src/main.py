@@ -93,6 +93,7 @@ def main() -> None:
     fail_on_regression = get_input("FAIL-ON-REGRESSION", default="true").lower() == "true"
     comment_on_pr = get_input("COMMENT-ON-PR", default="true").lower() == "true"
     github_token = get_input("GITHUB-TOKEN", default=os.environ.get("GITHUB_TOKEN", ""))
+    framework_hint = get_input("FRAMEWORK", default="auto")
     alpha = float(get_input("ALPHA", default="0.05"))
     n_bootstrap = int(get_input("N-BOOTSTRAP", default="10000"))
     confidence = float(get_input("CONFIDENCE", default="0.95"))
@@ -142,6 +143,10 @@ def main() -> None:
             },
         )
         sys.exit(1)
+
+    if framework_hint.lower() != "auto" and current.framework.lower() in ("", "unknown"):
+        current.framework = framework_hint
+        print(f"::notice::Using framework input fallback: {current.framework}")
 
     print(f"::notice::Model: {current.model_name} ({current.framework})")
     print(f"::notice::Metrics: {', '.join(current.metrics.keys())}")
