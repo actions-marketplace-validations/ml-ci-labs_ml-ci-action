@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: pip install scikit-learn numpy
@@ -56,12 +56,11 @@ jobs:
           "
 
       - name: Validate with Wilcoxon test
-        uses: ml-ci-labs/ml-ci-action@v0.2.0
+        uses: ml-ci-labs/ml-ci-action@v0.2.1
         with:
           metrics-file: metrics.json
           baseline-metrics: main
           regression-test: wilcoxon
           alpha: "0.05"
           comment-on-pr: "true"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}

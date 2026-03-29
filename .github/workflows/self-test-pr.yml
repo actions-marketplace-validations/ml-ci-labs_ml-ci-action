@@ -13,6 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Use local Dockerfile for self-test
+        run: python scripts/use_local_action_runtime.py
+
       - name: Run ML-CI without a baseline
         uses: ./
         with:
@@ -25,6 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Use local Dockerfile for self-test
+        run: python scripts/use_local_action_runtime.py
 
       - name: Run ML-CI with a remote main baseline fetch
         uses: ./
@@ -39,6 +45,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Use local Dockerfile for self-test
+        run: python scripts/use_local_action_runtime.py
 
       - name: Run ML-CI with Wilcoxon test and comment on the PR
         uses: ./
@@ -59,6 +68,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Use local Dockerfile for self-test
+        run: python scripts/use_local_action_runtime.py
+
       - name: Run ML-CI with threshold test (no comment)
         uses: ./
         with:
@@ -74,6 +86,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Use local Dockerfile for self-test
+        run: python scripts/use_local_action_runtime.py
 
       - name: Run ML-CI with Wilcoxon signed-rank test
         uses: ./
@@ -91,6 +106,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Use local Dockerfile for self-test
+        run: python scripts/use_local_action_runtime.py
 
       - name: Run ML-CI against a regressed model
         id: regression_check
@@ -115,6 +133,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Use local Dockerfile for self-test
+        run: python scripts/use_local_action_runtime.py
 
       - name: Create invalid data fixture
         run: |

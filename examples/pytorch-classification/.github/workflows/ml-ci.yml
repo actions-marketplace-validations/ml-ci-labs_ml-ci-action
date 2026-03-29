@@ -1,4 +1,4 @@
-name: PyTorch Classification Example
+name: ML-CI First Run Example
 
 on:
   pull_request:
@@ -37,13 +37,10 @@ jobs:
           }
           EOF
 
-      - name: Validate the model change
-        uses: ml-ci/ml-ci-action@v0.1.0
+      - name: Validate the model change without a baseline
+        uses: ml-ci-labs/ml-ci-action@v0.2.1
         with:
           metrics-file: metrics.json
-          baseline-metrics: main
-          regression-test: threshold
-          regression-tolerance: "0.02"
           model-card: "true"
           comment-on-pr: "true"
           github-token: ${{ github.token }}

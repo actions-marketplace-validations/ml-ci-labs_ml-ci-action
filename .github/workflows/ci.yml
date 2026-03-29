@@ -13,15 +13,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: astral-sh/setup-uv@v6
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt pytest
+      - name: Sync dependencies
+        run: uv sync --frozen --group dev
 
       - name: Run unit tests
-        run: pytest -q
+        run: uv run pytest -q
+
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Build Docker action
-        run: docker build -t ml-ci-action .
+        run: docker build -t ml-ci-action:local .
+
+      - name: Smoke test local image
+        run: |
+          mkdir -p .tmp
+          : > .tmp/github_output.txt
+
+          docker run --rm \
+            -e INPUT_METRICS_FILE=tests/fixtures/current_metrics.json \
+            -e INPUT_COMMENT_ON_PR=false \
+            -e INPUT_FAIL_ON_REGRESSION=true \
+            -e GITHUB_WORKSPACE=/work \
+            -e GITHUB_OUTPUT=/tmp/ml-ci/github_output.txt \
+            -v "$PWD:/work" \
+            -v "$PWD/.tmp:/tmp/ml-ci" \
+            ml-ci-action:local
+
+          grep -q "validation-passed=true" .tmp/github_output.txt
