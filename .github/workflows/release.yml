@@ -103,3 +103,49 @@ jobs:
             "${{ needs.publish-ghcr.outputs.image-ref }}"
 
           grep -q "validation-passed=true" .tmp/github_output.txt
+
+  publish-github-release:
+    needs:
+      - publish-ghcr
+      - smoke-published-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Derive release notes
+        run: |
+          version="${GITHUB_REF_NAME}"
+          major="$(printf '%s' "$version" | cut -d. -f1)"
+          minor="$(printf '%s' "$version" | cut -d. -f1-2)"
+
+          cat > release-notes.md <<EOF
+          ## Container image tags
+
+          - Exact: \`ghcr.io/${GITHUB_REPOSITORY}:${version}\`
+          - Minor channel: \`ghcr.io/${GITHUB_REPOSITORY}:${minor}\`
+          - Major channel: \`ghcr.io/${GITHUB_REPOSITORY}:${major}\`
+
+          ## Runtime behavior
+
+          This repository tag records the action source for \`${version}\`.
+          The Docker runtime declared in \`action.yml\` tracks the moving minor image channel \`${minor}\`.
+          EOF
+
+      - name: Create or update GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$tag" \
+              --notes-file release-notes.md
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "$tag" \
+              --notes-file release-notes.md
+          fi
